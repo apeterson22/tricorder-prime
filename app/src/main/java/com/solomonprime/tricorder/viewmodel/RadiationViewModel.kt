@@ -115,14 +115,8 @@ class RadiationViewModel(
             return true
         }
 
-        // Method 3: Try to execute su command
-        return try {
-            val process = Runtime.getRuntime().exec("su -c id")
-            val exitCode = process.waitFor()
-            exitCode == 0
-        } catch (e: Exception) {
-            false
-        }
+        // Method 3: su exec skipped — blocks indefinitely on stock devices
+        return false
     }
 
     /**

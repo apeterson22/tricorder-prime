@@ -1,5 +1,6 @@
 package com.solomonprime.tricorder.viewmodel
 
+import android.annotation.SuppressLint
 import android.app.Application
 import android.bluetooth.BluetoothAdapter
 import android.content.Context
@@ -18,9 +19,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.io.BufferedReader
 import java.io.File
-import java.io.InputStreamReader
 import kotlin.math.sqrt
 import kotlin.random.Random
 
@@ -114,16 +113,12 @@ class BioScannerViewModel(application: Application) : AndroidViewModel(applicati
             if (Build.TAGS?.contains("test-keys") == true) return true
         } catch (_: Exception) {}
         try {
-            val process = Runtime.getRuntime().exec(arrayOf("su", "-c", "id"))
-            val reader = BufferedReader(InputStreamReader(process.inputStream))
-            val output = reader.readText()
-            reader.close()
-            process.destroy()
-            if (output.contains("uid=0")) return true
+            // su exec skipped — blocks indefinitely on stock devices
         } catch (_: Exception) {}
         return false
     }
 
+    @SuppressLint("MissingPermission")
     private fun detectBluetoothDevices() {
         try {
             val adapter = BluetoothAdapter.getDefaultAdapter() ?: return

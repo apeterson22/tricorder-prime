@@ -3,13 +3,14 @@ package com.solomonprime.tricorder.viewmodel
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
+import android.app.Application
 import android.content.Context
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Build
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -29,8 +30,10 @@ import kotlin.random.Random
  * Bluetooth dosimeter devices, and root-enhanced readings when available.
  */
 class RadiationViewModel(
-    private val context: Context
-) : ViewModel(), SensorEventListener {
+    application: Application
+) : AndroidViewModel(application), SensorEventListener {
+
+    private val context: Context = application.applicationContext
 
     // Root detection - same pattern as other ViewModels
     val isRooted: Boolean = detectRoot()

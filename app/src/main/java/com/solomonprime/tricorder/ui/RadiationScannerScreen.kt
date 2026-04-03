@@ -1,306 +1,305 @@
 package com.solomonprime.tricorder.ui
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.solomonprime.tricorder.ui.theme.*
 import com.solomonprime.tricorder.viewmodel.RadiationViewModel
+import com.solomonprime.tricorder.viewmodel.RadiationViewModel.AlertLevel
+import com.solomonprime.tricorder.viewmodel.RadiationViewModel.DataSource
 
+/**
+ * RadiationScannerScreen - LCARS-styled radiation scanner interface
+ * Displays CPM, µSv/hr, field anomaly, and alert status with visual effects
+ */
 @Composable
 fun RadiationScannerScreen(
-    modifier: Modifier = Modifier,
-    viewModel: RadiationViewModel = viewModel()
+    viewModel: RadiationViewModel = viewModel(),
+    modifier: Modifier = Modifier
 ) {
+    // Collect state flows
     val cpm by viewModel.cpm.collectAsState()
     val microSievert by viewModel.microSievert.collectAsState()
     val alertLevel by viewModel.alertLevel.collectAsState()
     val isScanning by viewModel.isScanning.collectAsState()
+    val dataSource by viewModel.dataSource.collectAsState()
+    val connectedDevice by viewModel.connectedDevice.collectAsState()
+    val fieldAnomaly by viewModel.fieldAnomaly.collectAsState()
 
-    // Alert level color mapping using LCARS colors
-    val alertColor by animateColorAsState(
-        targetValue = when (alertLevel) {
-            "ALERT" -> LcarsRed
-            "ELEVATED" -> LcarsOrange
-            else -> LcarsBlue  // NOMINAL - using blue as green equivalent in LCARS
-        },
-        animationSpec = tween(300),
-        label = "alertColor"
-    )
-
-    // Auto-start scanning on composition
-    LaunchedEffect(Unit) {
-        viewModel.startScan()
-    }
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(LcarsBlack)
-            .padding(12.dp)
-            .verticalScroll(rememberScrollState())
-    ) {
-        LcarsSectionHeader(title = "Radiation Analysis", color = LcarsOrange)
-
-        LcarsScanningIndicator(isActive = isScanning, color = alertColor)
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Large CPM display (prominent)
-        LargeCpmDisplay(
-            cpm = cpm,
-            accentColor = alertColor
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // µSv/hr reading
-        LcarsDataCard(
-            title = "Dosage",
-            value = "%.4f".format(microSievert),
-            unit = "µSv/hr",
-            accentColor = LcarsPurple
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Alert level indicator
-        AlertLevelIndicator(
-            alertLevel = alertLevel,
-            color = alertColor
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Scan control button
-        ScanControlButton(
-            isScanning = isScanning,
-            onToggle = {
-                if (isScanning) {
-                    viewModel.stopScan()
-                } else {
-                    viewModel.startScan()
-                }
-            }
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Sensor status
-        LcarsSectionHeader(title = "Detector Status", color = LcarsTan)
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            LcarsStatusIndicator(label = "GEIGER", isActive = isScanning)
-            LcarsStatusIndicator(label = "CAL", isActive = true)
-            LcarsStatusIndicator(label = "LINK", isActive = isScanning)
-        }
-    }
-}
-
-/**
- * Large prominent CPM display in LCARS style
- */
-@Composable
-private fun LargeCpmDisplay(
-    cpm: Int,
-    accentColor: Color,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(accentColor.copy(alpha = 0.15f))
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = "COUNTS PER MINUTE",
-            color = accentColor,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            text = cpm.toString(),
-            color = LcarsWhite,
-            fontSize = 72.sp,
-            fontWeight = FontWeight.Bold
-        )
-
-        Text(
-            text = "CPM",
-            color = LcarsWhite.copy(alpha = 0.7f),
-            fontSize = 18.sp
-        )
-    }
-}
-
-/**
- * Alert level indicator with animated color
- */
-@Composable
-private fun AlertLevelIndicator(
-    alertLevel: String,
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(56.dp)
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Left accent bar
-        Box(
-            modifier = Modifier
-                .width(8.dp)
-                .fillMaxHeight()
-                .clip(RoundedCornerShape(topStart = 4.dp, bottomStart = 4.dp))
-                .background(color)
-        )
-
-        Spacer(modifier = Modifier.width(8.dp))
-
-        // Label
-        Box(
-            modifier = Modifier
-                .width(100.dp)
-                .fillMaxHeight()
-                .clip(RoundedCornerShape(4.dp))
-                .background(color.copy(alpha = 0.3f))
-                .padding(horizontal = 8.dp),
-            contentAlignment = Alignment.CenterStart
-        ) {
-            Text(
-                text = "STATUS",
-                color = color,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-
-        Spacer(modifier = Modifier.width(8.dp))
-
-        // Alert level value
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight()
-                .clip(RoundedCornerShape(4.dp))
-                .background(color.copy(alpha = 0.2f))
-                .padding(horizontal = 12.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = alertLevel,
-                color = color,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-
-        // Animated indicator
-        AnimatedAlertIndicator(
-            isActive = alertLevel != "NOMINAL",
-            color = color
-        )
-
-        // Right cap
-        Box(
-            modifier = Modifier
-                .width(16.dp)
-                .fillMaxHeight()
-                .clip(RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp))
-                .background(color)
-        )
-    }
-}
-
-/**
- * Animated pulsing indicator for elevated/alert states
- */
-@Composable
-private fun AnimatedAlertIndicator(
-    isActive: Boolean,
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    if (!isActive) {
-        Spacer(modifier = modifier.width(8.dp))
-        return
-    }
-
-    val infiniteTransition = rememberInfiniteTransition(label = "alertPulse")
-    val alpha by infiniteTransition.animateFloat(
-        initialValue = 0.3f,
+    // Alert color pulsing animation
+    val infiniteTransition = rememberInfiniteTransition(label = "alert_pulse")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.7f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(500, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "alertAlpha"
+        label = "pulse_alpha"
     )
 
-    Box(
-        modifier = modifier
-            .padding(horizontal = 4.dp)
-            .size(12.dp)
-            .clip(RoundedCornerShape(2.dp))
-            .background(color.copy(alpha = alpha))
+    // Determine alert color based on level
+    val baseAlertColor = when (alertLevel) {
+        AlertLevel.NOMINAL -> LcarsBlue
+        AlertLevel.ELEVATED -> LcarsOrange
+        AlertLevel.ALERT -> LcarsRed
+    }
+
+    // Apply pulsing only for non-nominal states
+    val alertColor by animateColorAsState(
+        targetValue = if (alertLevel != AlertLevel.NOMINAL) {
+            baseAlertColor.copy(alpha = pulseAlpha)
+        } else {
+            baseAlertColor
+        },
+        label = "alert_color"
     )
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(LcarsBlack)
+            .padding(16.dp)
+    ) {
+        // Header
+        LcarsSectionHeader(
+            title = "RADIATION SCANNER",
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Status Row: Data Source Badge + Root Status + Connected Device
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Data Source Badge
+            DataSourceBadge(dataSource = dataSource)
+
+            // Root Status Indicator
+            RootStatusIndicator(isRooted = viewModel.isRooted)
+        }
+
+        // Connected Device (if any)
+        connectedDevice?.let { device ->
+            Spacer(modifier = Modifier.height(8.dp))
+            ConnectedDeviceDisplay(deviceName = device)
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Main Readings Display
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            // CPM Display
+            LcarsDataCard(
+                title = "CPM",
+                value = String.format("%.1f", cpm),
+                unit = "cpm",
+                accentColor = alertColor,
+                modifier = Modifier.weight(1f)
+            )
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            // µSv/hr Display
+            LcarsDataCard(
+                title = "µSv/hr",
+                value = String.format("%.4f", microSievert),
+                unit = "µSv/hr",
+                accentColor = alertColor,
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Field Anomaly Gauge
+        Text(
+            text = "FIELD ANOMALY",
+            color = LcarsTan,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+        LcarsGauge(
+            value = fieldAnomaly,
+            minValue = 0f,
+            maxValue = 1f,
+            label = "Anomaly",
+            unit = "%",
+            accentColor = LcarsRed,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Alert Level Display
+        AlertLevelDisplay(
+            alertLevel = alertLevel,
+            color = alertColor,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        // Scan Control Button
+        LcarsButton(
+            text = if (isScanning) "STOP SCAN" else "START SCAN",
+            onClick = {
+                if (isScanning) {
+                    viewModel.stopScanning()
+                } else {
+                    viewModel.startScanning()
+                }
+            },
+            color = if (isScanning) LcarsRed else LcarsBlue,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+        )
+    }
 }
 
 /**
- * Scan control toggle button
+ * Data Source Badge - Shows the current data source with LCARS styling
  */
 @Composable
-private fun ScanControlButton(
-    isScanning: Boolean,
-    onToggle: () -> Unit,
+private fun DataSourceBadge(
+    dataSource: DataSource,
     modifier: Modifier = Modifier
 ) {
-    val buttonColor = if (isScanning) LcarsRed else LcarsBlue
+    val (text, color) = when (dataSource) {
+        DataSource.LIVE_SENSOR -> "LIVE SENSOR" to LcarsBlue
+        DataSource.BT_DEVICE -> "BT DEVICE" to LcarsPurple
+        DataSource.ROOT_ENHANCED -> "ROOT ENHANCED" to LcarsOrange
+        DataSource.SIMULATED -> "SIMULATED" to LcarsTan
+    }
 
-    Button(
-        onClick = onToggle,
+    Box(
         modifier = modifier
-            .fillMaxWidth()
-            .height(48.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = buttonColor
-        ),
-        shape = RoundedCornerShape(8.dp)
+            .clip(RoundedCornerShape(topStart = 16.dp, bottomEnd = 16.dp))
+            .background(color)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
     ) {
         Text(
-            text = if (isScanning) "STOP SCAN" else "START SCAN",
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-            color = LcarsBlack
+            text = text,
+            color = LcarsBlack,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+/**
+ * Root Status Indicator - Shows whether device is rooted
+ */
+@Composable
+private fun RootStatusIndicator(
+    isRooted: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val (text, color) = if (isRooted) {
+        "ROOT" to LcarsOrange
+    } else {
+        "STANDARD" to LcarsTan
+    }
+
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(color)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = text,
+            color = color,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+/**
+ * Connected Device Display - Shows paired Bluetooth dosimeter name
+ */
+@Composable
+private fun ConnectedDeviceDisplay(
+    deviceName: String,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .border(1.dp, LcarsPurple, RoundedCornerShape(4.dp))
+            .padding(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "CONNECTED:",
+            color = LcarsPurple,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = deviceName,
+            color = Color.White,
+            fontSize = 14.sp
+        )
+    }
+}
+
+/**
+ * Alert Level Display - Shows current alert status with appropriate styling
+ */
+@Composable
+private fun AlertLevelDisplay(
+    alertLevel: AlertLevel,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    val statusText = when (alertLevel) {
+        AlertLevel.NOMINAL -> "NOMINAL - SAFE"
+        AlertLevel.ELEVATED -> "ELEVATED - CAUTION"
+        AlertLevel.ALERT -> "ALERT - DANGER"
+    }
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(color.copy(alpha = 0.2f))
+            .border(2.dp, color, RoundedCornerShape(8.dp))
+            .padding(16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = statusText,
+            color = color,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold
         )
     }
 }

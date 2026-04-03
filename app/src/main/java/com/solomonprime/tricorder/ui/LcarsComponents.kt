@@ -71,6 +71,7 @@ fun LcarsNavigationBar(
                 "ENV" -> if (isSelected) LcarsOrange else LcarsTan
                 "GEO" -> if (isSelected) LcarsBlue else LcarsPurple
                 "EM" -> if (isSelected) LcarsPink else LcarsPurple
+                "ACO" -> if (isSelected) LcarsRed else LcarsTan
                 else -> if (isSelected) LcarsOrange else LcarsTan
             }
             

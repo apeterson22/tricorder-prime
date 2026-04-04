@@ -15,16 +15,40 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.solomonprime.tricorder.ui.theme.*
+import com.solomonprime.tricorder.viewmodel.AcousticViewModel
 import kotlin.math.sin
 
 @Composable
 fun AcousticScannerScreen(
-    waveformData: List<Float> = List(128) { sin(it * 0.2f) * 0.5f }, // -1..1
-    fftData: List<Float> = List(64) { (0.5f - it * 0.005f).coerceAtLeast(0f) }, // 0..1 magnitude
-    dbLevel: Float = 42f,
-    peakFrequency: Float = 440f
+    viewModel: AcousticViewModel = viewModel()
 ) {
+    // Collect real-time state from ViewModel
+    val waveformData by viewModel.waveform.collectAsState()
+    val dbLevel by viewModel.decibels.collectAsState()
+    val peakFrequency by viewModel.dominantFrequency.collectAsState()
+    val freqBand by viewModel.freqBand.collectAsState()
+    
+    // Start/stop recording based on lifecycle
+    DisposableEffect(Unit) {
+        viewModel.startRecording()
+        onDispose { viewModel.stopRecording() }
+    }
+    
+    // Generate FFT-style data from waveform for visualization
+    val fftData = remember(waveformData) {
+        if (waveformData.isEmpty()) {
+            List(64) { 0f }
+        } else {
+            val avgLevel = waveformData.average().toFloat()
+            List(64) { i ->
+                val base = avgLevel * (1f - i * 0.01f)
+                (base + (waveformData.getOrElse(i % waveformData.size) { 0f } * 0.3f)).coerceIn(0f, 1f)
+            }
+        }
+    }
+
     LcarsScreenScaffold(title = "ACO SCANNER", headerColor = LcarsPurple) {
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

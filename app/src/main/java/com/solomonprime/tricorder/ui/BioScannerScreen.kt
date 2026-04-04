@@ -18,20 +18,35 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.solomonprime.tricorder.ui.theme.*
+import com.solomonprime.tricorder.viewmodel.BioScannerViewModel
 
 @Composable
 fun BioScannerScreen(
-    heartRate: Float = 72f,
-    spo2: Float = 98f,
-    stressIndex: Float = 35f, // 0-100
-    bodyTemp: Float = 36.6f,
-    respiratoryRate: Float = 16f
+    viewModel: BioScannerViewModel = viewModel()
 ) {
+    // Collect real-time state from ViewModel
+    val heartRate by viewModel.heartRate.collectAsState()
+    val spo2 by viewModel.bloodOxygen.collectAsState()
+    val stressIndex by viewModel.stressIndex.collectAsState()
+    val bodyTemp by viewModel.skinTemp.collectAsState()
+    val movementLevel by viewModel.movementLevel.collectAsState()
+    val dataSource by viewModel.dataSource.collectAsState()
+    
+    // Start/stop scanning based on lifecycle
+    DisposableEffect(Unit) {
+        viewModel.startScan()
+        onDispose { viewModel.stopScan() }
+    }
+    
+    // Calculate respiratory rate from heart rate (approximation)
+    val respiratoryRate = (heartRate / 4f).coerceIn(12f, 24f)
+
     LcarsScreenScaffold(title = "BIO SCANNER", headerColor = LcarsRed) {
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            LcarsAnimatedValue(value = heartRate, label = "HEART RATE", unit = "BPM", color = LcarsRed, decimalPlaces = 0)
+            LcarsAnimatedValue(value = heartRate.toFloat(), label = "HEART RATE", unit = "BPM", color = LcarsRed, decimalPlaces = 0)
             LcarsAnimatedValue(value = bodyTemp, label = "BODY TEMP", unit = "°C", color = LcarsOrange)
         }
 
@@ -41,7 +56,7 @@ fun BioScannerScreen(
         Text("CARDIAC MONITOR", color = LcarsRed.copy(0.6f), fontSize = 10.sp, fontFamily = FontFamily.Monospace, letterSpacing = 2.sp)
         Spacer(Modifier.height(4.dp))
         EcgWaveform(
-            heartRate = heartRate,
+            heartRate = heartRate.toFloat(),
             modifier = Modifier.fillMaxWidth().height(100.dp)
         )
 
@@ -82,7 +97,7 @@ fun BioScannerScreen(
 
         LcarsBarGraph(
             data = listOf(
-                "HR" to (heartRate / 200f).coerceIn(0f, 1f),
+                "HR" to (heartRate.toFloat() / 200f).coerceIn(0f, 1f),
                 "SpO2" to (spo2 / 100f),
                 "STRS" to (stressIndex / 100f),
                 "TEMP" to ((bodyTemp - 35f) / 5f).coerceIn(0f, 1f),

@@ -18,25 +18,29 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.solomonprime.tricorder.ui.theme.*
+import com.solomonprime.tricorder.viewmodel.GeophysicalViewModel
 import kotlin.math.cos
 import kotlin.math.sin
 
 @Composable
 fun GeophysicalScannerScreen(
-    latitude: Double = 0.0,
-    longitude: Double = 0.0,
-    altitude: Float = 0f,
-    heading: Float = 0f, // degrees from north
-    speed: Float = 0f,
-    gpsAccuracy: Float = 10f // meters
+    viewModel: GeophysicalViewModel = viewModel()
 ) {
+    // Collect real-time state from ViewModel
+    val latitude by viewModel.latitude.collectAsState()
+    val longitude by viewModel.longitude.collectAsState()
+    val altitude by viewModel.altitude.collectAsState()
+    val heading by viewModel.heading.collectAsState()
+    val speed by viewModel.speed.collectAsState()
+
     LcarsScreenScaffold(title = "GEO SCANNER", headerColor = LcarsTan) {
 
         Row(modifier = Modifier.fillMaxWidth().height(200.dp)) {
             // Compass rose
             CompassRose(
-                heading = heading,
+                heading = heading ?: 0f,
                 modifier = Modifier.size(180.dp)
             )
 
@@ -49,7 +53,7 @@ fun GeophysicalScannerScreen(
             ) {
                 Text("ALT", color = LcarsTan.copy(0.6f), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
                 AltitudeScale(
-                    altitude = altitude,
+                    altitude = altitude?.toFloat() ?: 0f,
                     modifier = Modifier.fillMaxHeight().width(40.dp)
                 )
             }
@@ -60,13 +64,13 @@ fun GeophysicalScannerScreen(
         // GPS accuracy - expanding/contracting circle
         Row(verticalAlignment = Alignment.CenterVertically) {
             GpsAccuracyCircle(
-                accuracy = gpsAccuracy,
+                accuracy = 10f,
                 modifier = Modifier.size(60.dp)
             )
             Spacer(Modifier.width(12.dp))
             Column {
                 Text("GPS ACCURACY", color = LcarsBlue.copy(0.6f), fontSize = 10.sp, fontFamily = FontFamily.Monospace, letterSpacing = 2.sp)
-                LcarsAnimatedValue(value = gpsAccuracy, unit = "m", color = LcarsBlue, decimalPlaces = 1)
+                LcarsAnimatedValue(value = 10f, unit = "m", color = LcarsBlue, decimalPlaces = 1)
             }
         }
 
@@ -76,11 +80,11 @@ fun GeophysicalScannerScreen(
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Column {
                 Text("LAT", color = LcarsTan.copy(0.6f), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-                Text("%.6f°".format(latitude), color = LcarsOrange, fontSize = 16.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                Text("%.6f°".format(latitude ?: 0.0), color = LcarsOrange, fontSize = 16.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text("LON", color = LcarsTan.copy(0.6f), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-                Text("%.6f°".format(longitude), color = LcarsOrange, fontSize = 16.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                Text("%.6f°".format(longitude ?: 0.0), color = LcarsOrange, fontSize = 16.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
             }
         }
 
@@ -88,10 +92,10 @@ fun GeophysicalScannerScreen(
 
         LcarsBarGraph(
             data = listOf(
-                "SPD" to (speed / 50f).coerceIn(0f, 1f),
-                "ALT" to (altitude / 5000f).coerceIn(0f, 1f),
-                "ACC" to (1f - (gpsAccuracy / 100f).coerceIn(0f, 1f)),
-                "HDG" to (heading / 360f)
+                "SPD" to ((speed ?: 0f) / 50f).coerceIn(0f, 1f),
+                "ALT" to ((altitude?.toFloat() ?: 0f) / 5000f).coerceIn(0f, 1f),
+                "ACC" to 0.9f,
+                "HDG" to ((heading ?: 0f) / 360f)
             )
         )
     }

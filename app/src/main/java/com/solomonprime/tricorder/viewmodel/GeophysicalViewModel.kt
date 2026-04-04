@@ -49,6 +49,9 @@ class GeophysicalViewModel(application: Application) : AndroidViewModel(applicat
     private val _bearing = MutableStateFlow<Float?>(null)
     val bearing = _bearing.asStateFlow()
 
+    private val _heading = MutableStateFlow<Float?>(null)
+    val heading = _heading.asStateFlow()
+
     private val _accelerometerData = MutableStateFlow(floatArrayOf(0f, 0f, 0f))
     val accelerometerData = _accelerometerData.asStateFlow()
 
@@ -134,8 +137,14 @@ class GeophysicalViewModel(application: Application) : AndroidViewModel(applicat
 
     override fun onSensorChanged(event: SensorEvent?) {
         when (event?.sensor?.type) {
-            Sensor.TYPE_ACCELEROMETER -> _accelerometerData.value = event.values.clone()
-            Sensor.TYPE_MAGNETIC_FIELD -> _magnetometerData.value = event.values.clone()
+            Sensor.TYPE_ACCELEROMETER -> {
+                _accelerometerData.value = event.values.clone()
+                computeHeading()
+            }
+            Sensor.TYPE_MAGNETIC_FIELD -> {
+                _magnetometerData.value = event.values.clone()
+                computeHeading()
+            }
             Sensor.TYPE_GYROSCOPE -> _gyroscopeData.value = event.values.clone()
             Sensor.TYPE_GRAVITY -> _gravityData.value = event.values.clone()
             Sensor.TYPE_ROTATION_VECTOR -> {
@@ -143,6 +152,19 @@ class GeophysicalViewModel(application: Application) : AndroidViewModel(applicat
                     _rotationData.value = floatArrayOf(event.values[0], event.values[1], event.values[2])
                 }
             }
+        }
+    }
+
+    private fun computeHeading() {
+        val accel = _accelerometerData.value
+        val mag = _magnetometerData.value
+        val rotationMatrix = FloatArray(9)
+        val inclinationMatrix = FloatArray(9)
+        if (SensorManager.getRotationMatrix(rotationMatrix, inclinationMatrix, accel, mag)) {
+            val orientation = FloatArray(3)
+            SensorManager.getOrientation(rotationMatrix, orientation)
+            val azimuth = Math.toDegrees(orientation[0].toDouble()).toFloat()
+            _heading.value = (azimuth + 360f) % 360f
         }
     }
 

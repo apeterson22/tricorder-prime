@@ -23,7 +23,7 @@ fun GeophysicalScannerScreen(
     val longitude by viewModel.longitude.collectAsState()
     val altitude by viewModel.altitude.collectAsState()
     val speed by viewModel.speed.collectAsState()
-    val bearing by viewModel.bearing.collectAsState()
+    val heading by viewModel.heading.collectAsState()
     
     val accelerometerData by viewModel.accelerometerData.collectAsState()
     val magnetometerData by viewModel.magnetometerData.collectAsState()
@@ -79,8 +79,8 @@ fun GeophysicalScannerScreen(
         
         LcarsDataCard(
             title = "Heading",
-            value = bearing?.let { "%.0f".format(it) } ?: "---",
-            unit = "°",
+            value = heading?.let { "%.0f°  %s".format(it, compassDirection(it)) } ?: "---",
+            unit = "",
             accentColor = LcarsTan
         )
         
@@ -154,5 +154,20 @@ fun GeophysicalScannerScreen(
             LcarsStatusIndicator(label = "ROT", isActive = hasRotation)
             LcarsStatusIndicator(label = "GPS", isActive = latitude != null)
         }
+    }
+}
+
+private fun compassDirection(degrees: Float): String {
+    val normalized = ((degrees % 360f) + 360f) % 360f
+    return when {
+        normalized < 22.5f  -> "N"
+        normalized < 67.5f  -> "NE"
+        normalized < 112.5f -> "E"
+        normalized < 157.5f -> "SE"
+        normalized < 202.5f -> "S"
+        normalized < 247.5f -> "SW"
+        normalized < 292.5f -> "W"
+        normalized < 337.5f -> "NW"
+        else                -> "N"
     }
 }

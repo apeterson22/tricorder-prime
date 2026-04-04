@@ -235,7 +235,7 @@ fun LcarsGauge(
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "%.1f $unit".format(value),
+                text = if (unit.isEmpty()) "%.1f".format(value) else "%.1f %s".format(value, unit),
                 color = LcarsWhite,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold

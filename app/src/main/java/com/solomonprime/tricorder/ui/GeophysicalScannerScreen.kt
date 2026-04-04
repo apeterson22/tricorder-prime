@@ -1,173 +1,227 @@
 package com.solomonprime.tricorder.ui
 
-import androidx.compose.foundation.background
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.unit.sp
 import com.solomonprime.tricorder.ui.theme.*
-import com.solomonprime.tricorder.viewmodel.GeophysicalViewModel
+import kotlin.math.cos
+import kotlin.math.sin
 
 @Composable
 fun GeophysicalScannerScreen(
-    modifier: Modifier = Modifier,
-    viewModel: GeophysicalViewModel = viewModel()
+    latitude: Double = 0.0,
+    longitude: Double = 0.0,
+    altitude: Float = 0f,
+    heading: Float = 0f, // degrees from north
+    speed: Float = 0f,
+    gpsAccuracy: Float = 10f // meters
 ) {
-    val location by viewModel.location.collectAsState()
-    val latitude by viewModel.latitude.collectAsState()
-    val longitude by viewModel.longitude.collectAsState()
-    val altitude by viewModel.altitude.collectAsState()
-    val speed by viewModel.speed.collectAsState()
-    val heading by viewModel.heading.collectAsState()
-    
-    val accelerometerData by viewModel.accelerometerData.collectAsState()
-    val magnetometerData by viewModel.magnetometerData.collectAsState()
-    val gyroscopeData by viewModel.gyroscopeData.collectAsState()
-    val gravityData by viewModel.gravityData.collectAsState()
-    val rotationData by viewModel.rotationData.collectAsState()
-    
-    val hasGyroscope by viewModel.hasGyroscope.collectAsState()
-    val hasGravity by viewModel.hasGravitySensor.collectAsState()
-    val hasRotation by viewModel.hasRotationVector.collectAsState()
+    LcarsScreenScaffold(title = "GEO SCANNER", headerColor = LcarsTan) {
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(LcarsBlack)
-            .padding(12.dp)
-            .verticalScroll(rememberScrollState())
-    ) {
-        LcarsSectionHeader(title = "Geophysical Analysis", color = LcarsBlue)
-        
-        LcarsScanningIndicator(isActive = true, color = LcarsBlue)
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        // Location data
-        LcarsDataCard(
-            title = "Latitude",
-            value = latitude?.let { "%.6f".format(it) } ?: "---",
-            unit = "°",
-            accentColor = LcarsBlue
+        Row(modifier = Modifier.fillMaxWidth().height(200.dp)) {
+            // Compass rose
+            CompassRose(
+                heading = heading,
+                modifier = Modifier.size(180.dp)
+            )
+
+            Spacer(Modifier.width(12.dp))
+
+            // Altitude vertical scale
+            Column(
+                modifier = Modifier.fillMaxHeight().width(60.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("ALT", color = LcarsTan.copy(0.6f), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                AltitudeScale(
+                    altitude = altitude,
+                    modifier = Modifier.fillMaxHeight().width(40.dp)
+                )
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // GPS accuracy - expanding/contracting circle
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            GpsAccuracyCircle(
+                accuracy = gpsAccuracy,
+                modifier = Modifier.size(60.dp)
+            )
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text("GPS ACCURACY", color = LcarsBlue.copy(0.6f), fontSize = 10.sp, fontFamily = FontFamily.Monospace, letterSpacing = 2.sp)
+                LcarsAnimatedValue(value = gpsAccuracy, unit = "m", color = LcarsBlue, decimalPlaces = 1)
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // Coordinates
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Column {
+                Text("LAT", color = LcarsTan.copy(0.6f), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                Text("%.6f°".format(latitude), color = LcarsOrange, fontSize = 16.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text("LON", color = LcarsTan.copy(0.6f), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                Text("%.6f°".format(longitude), color = LcarsOrange, fontSize = 16.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        LcarsBarGraph(
+            data = listOf(
+                "SPD" to (speed / 50f).coerceIn(0f, 1f),
+                "ALT" to (altitude / 5000f).coerceIn(0f, 1f),
+                "ACC" to (1f - (gpsAccuracy / 100f).coerceIn(0f, 1f)),
+                "HDG" to (heading / 360f)
+            )
         )
-        
-        LcarsDataCard(
-            title = "Longitude",
-            value = longitude?.let { "%.6f".format(it) } ?: "---",
-            unit = "°",
-            accentColor = LcarsBlue
-        )
-        
-        LcarsDataCard(
-            title = "Altitude",
-            value = altitude?.let { "%.1f".format(it) } ?: "---",
-            unit = "m",
-            accentColor = LcarsPurple
-        )
-        
-        LcarsDataCard(
-            title = "Velocity",
-            value = speed?.let { "%.1f".format(it * 3.6f) } ?: "---",
-            unit = "km/h",
-            accentColor = LcarsOrange
-        )
-        
-        LcarsDataCard(
-            title = "Heading",
-            value = heading?.let { "%.0f°  %s".format(it, compassDirection(it)) } ?: "---",
-            unit = "",
-            accentColor = LcarsTan
-        )
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        // Accelerometer
-        LcarsAxisDisplay(
-            title = "Accelerometer",
-            x = accelerometerData[0],
-            y = accelerometerData[1],
-            z = accelerometerData[2],
-            unit = "m/s²",
-            accentColor = LcarsOrange
-        )
-        
-        // Magnetometer
-        LcarsAxisDisplay(
-            title = "Magnetometer",
-            x = magnetometerData[0],
-            y = magnetometerData[1],
-            z = magnetometerData[2],
-            unit = "μT",
-            accentColor = LcarsPink
-        )
-        
-        // Gyroscope (if available)
-        if (hasGyroscope) {
-            LcarsAxisDisplay(
-                title = "Gyroscope",
-                x = gyroscopeData[0],
-                y = gyroscopeData[1],
-                z = gyroscopeData[2],
-                unit = "rad/s",
-                accentColor = LcarsPurple
+    }
+}
+
+@Composable
+private fun CompassRose(heading: Float, modifier: Modifier) {
+    val animatedHeading by animateFloatAsState(
+        targetValue = heading,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = 100f),
+        label = "heading"
+    )
+
+    Canvas(modifier = modifier) {
+        val cx = size.width / 2f
+        val cy = size.height / 2f
+        val r = minOf(cx, cy) * 0.85f
+
+        // Outer ring
+        drawCircle(LcarsTan.copy(alpha = 0.3f), r, Offset(cx, cy), style = Stroke(2f))
+        drawCircle(LcarsDarkPanel, r - 4f, Offset(cx, cy))
+
+        // Degree marks
+        for (i in 0 until 360 step 10) {
+            val rad = Math.toRadians(i.toDouble())
+            val inner = if (i % 90 == 0) r * 0.7f else if (i % 30 == 0) r * 0.8f else r * 0.88f
+            val outerR = r * 0.95f
+            drawLine(
+                color = if (i % 90 == 0) LcarsOrange else LcarsTan.copy(0.3f),
+                start = Offset(cx + inner * sin(rad).toFloat(), cy - inner * cos(rad).toFloat()),
+                end = Offset(cx + outerR * sin(rad).toFloat(), cy - outerR * cos(rad).toFloat()),
+                strokeWidth = if (i % 90 == 0) 2f else 1f
             )
         }
-        
-        // Gravity (if available)
-        if (hasGravity) {
-            LcarsAxisDisplay(
-                title = "Gravity Vector",
-                x = gravityData[0],
-                y = gravityData[1],
-                z = gravityData[2],
-                unit = "m/s²",
-                accentColor = LcarsBlue
-            )
+
+        // Cardinal labels
+        val labelR = r * 0.6f
+        val cardinals = listOf(0f to "N", 90f to "E", 180f to "S", 270f to "W")
+        val paint = android.graphics.Paint().apply {
+            color = android.graphics.Color.rgb(0xFF, 0x99, 0x00)
+            textSize = 16f * density
+            textAlign = android.graphics.Paint.Align.CENTER
+            typeface = android.graphics.Typeface.MONOSPACE
+            isFakeBoldText = true
         }
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        // Sensor status
-        LcarsSectionHeader(title = "Motion Sensors", color = LcarsTan)
-        
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            LcarsStatusIndicator(label = "ACCEL", isActive = true)
-            LcarsStatusIndicator(label = "MAG", isActive = true)
-            LcarsStatusIndicator(label = "GYRO", isActive = hasGyroscope)
+        cardinals.forEach { (deg, lbl) ->
+            val rad = Math.toRadians(deg.toDouble())
+            val lx = cx + labelR * sin(rad).toFloat()
+            val ly = cy - labelR * cos(rad).toFloat() + 6f * density
+            if (lbl == "N") paint.color = android.graphics.Color.rgb(0xFF, 0x66, 0x66)
+            else paint.color = android.graphics.Color.rgb(0xFF, 0x99, 0x00)
+            drawContext.canvas.nativeCanvas.drawText(lbl, lx, ly, paint)
         }
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            LcarsStatusIndicator(label = "GRAV", isActive = hasGravity)
-            LcarsStatusIndicator(label = "ROT", isActive = hasRotation)
-            LcarsStatusIndicator(label = "GPS", isActive = latitude != null)
+
+        // Rotating needle pointing to heading
+        rotate(-animatedHeading, Offset(cx, cy)) {
+            // North arrow (red)
+            val arrowLen = r * 0.45f
+            drawLine(LcarsRed, Offset(cx, cy), Offset(cx, cy - arrowLen), 3f, StrokeCap.Round)
+            // Arrow head
+            drawLine(LcarsRed, Offset(cx, cy - arrowLen), Offset(cx - 8f, cy - arrowLen + 16f), 2f)
+            drawLine(LcarsRed, Offset(cx, cy - arrowLen), Offset(cx + 8f, cy - arrowLen + 16f), 2f)
+            // South tail
+            drawLine(LcarsTan.copy(0.5f), Offset(cx, cy), Offset(cx, cy + arrowLen * 0.6f), 2f)
+        }
+
+        // Center dot
+        drawCircle(LcarsOrange, 5f, Offset(cx, cy))
+    }
+}
+
+@Composable
+private fun AltitudeScale(altitude: Float, modifier: Modifier) {
+    val maxAlt = 5000f
+    val fraction by animateFloatAsState(
+        targetValue = (altitude / maxAlt).coerceIn(0f, 1f),
+        animationSpec = spring(dampingRatio = 0.7f),
+        label = "alt"
+    )
+
+    Canvas(modifier = modifier) {
+        val barW = size.width * 0.5f
+        val barX = (size.width - barW) / 2f
+
+        // Scale background
+        drawRoundRect(
+            color = LcarsDarkPanel,
+            topLeft = Offset(barX, 0f),
+            size = Size(barW, size.height),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(4f)
+        )
+
+        // Fill from bottom
+        val fillH = size.height * fraction
+        drawRoundRect(
+            color = LcarsTan,
+            topLeft = Offset(barX + 2f, size.height - fillH),
+            size = Size(barW - 4f, fillH),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f)
+        )
+
+        // Tick marks
+        for (i in 0..10) {
+            val y = size.height * (1f - i / 10f)
+            drawLine(LcarsTan.copy(0.3f), Offset(barX + barW + 2f, y), Offset(size.width, y), 1f)
         }
     }
 }
 
-private fun compassDirection(degrees: Float): String {
-    val normalized = ((degrees % 360f) + 360f) % 360f
-    return when {
-        normalized < 22.5f  -> "N"
-        normalized < 67.5f  -> "NE"
-        normalized < 112.5f -> "E"
-        normalized < 157.5f -> "SE"
-        normalized < 202.5f -> "S"
-        normalized < 247.5f -> "SW"
-        normalized < 292.5f -> "W"
-        normalized < 337.5f -> "NW"
-        else                -> "N"
+@Composable
+private fun GpsAccuracyCircle(accuracy: Float, modifier: Modifier) {
+    val infiniteTransition = rememberInfiniteTransition(label = "gps")
+    val pulse by infiniteTransition.animateFloat(
+        initialValue = 0.8f,
+        targetValue = 1.2f,
+        animationSpec = infiniteRepeatable(
+            tween((accuracy * 50).toInt().coerceIn(300, 2000), easing = FastOutSlowInEasing),
+            RepeatMode.Reverse
+        ),
+        label = "gpsPulse"
+    )
+
+    Canvas(modifier = modifier) {
+        val cx = size.width / 2f
+        val cy = size.height / 2f
+        val baseR = minOf(cx, cy) * 0.6f
+        val r = baseR * pulse
+
+        drawCircle(LcarsBlue.copy(alpha = 0.1f), r, Offset(cx, cy))
+        drawCircle(LcarsBlue.copy(alpha = 0.4f), r, Offset(cx, cy), style = Stroke(2f))
+        drawCircle(LcarsBlue, 4f, Offset(cx, cy))
     }
 }

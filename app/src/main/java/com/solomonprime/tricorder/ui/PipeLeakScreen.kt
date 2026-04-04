@@ -213,6 +213,7 @@ fun PipeLeakScreen(viewModel: PipeLeakViewModel = viewModel()) {
         LcarsDataCard(
             title = "ACOUSTIC\n50-500Hz",
             value = "%.1f".format(acousticEnergy),
+            unit = " ",
             accentColor = LcarsBlue
         )
         LcarsDataCard(
@@ -236,6 +237,7 @@ fun PipeLeakScreen(viewModel: PipeLeakViewModel = viewModel()) {
         LcarsDataCard(
             title = "IR LIGHT",
             value = "%.1f".format(irReading),
+            unit = " ",
             accentColor = LcarsRed
         )
 

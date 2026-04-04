@@ -1,305 +1,160 @@
 package com.solomonprime.tricorder.ui
-import androidx.lifecycle.viewmodel.compose.viewModel
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.solomonprime.tricorder.ui.theme.*
-import com.solomonprime.tricorder.viewmodel.RadiationViewModel
-import com.solomonprime.tricorder.viewmodel.RadiationViewModel.AlertLevel
-import com.solomonprime.tricorder.viewmodel.RadiationViewModel.DataSource
+import kotlin.random.Random
 
-/**
- * RadiationScannerScreen - LCARS-styled radiation scanner interface
- * Displays CPM, µSv/hr, field anomaly, and alert status with visual effects
- */
 @Composable
 fun RadiationScannerScreen(
-    viewModel: RadiationViewModel = viewModel(),
-    modifier: Modifier = Modifier
+    cpm: Float = 18f,
+    doseMicroSv: Float = 0.12f,
+    alertLevel: Int = 0 // 0=normal, 1=elevated, 2=high, 3=danger
 ) {
-    // Collect state flows
-    val cpm by viewModel.cpm.collectAsState()
-    val microSievert by viewModel.microSievert.collectAsState()
-    val alertLevel by viewModel.alertLevel.collectAsState()
-    val isScanning by viewModel.isScanning.collectAsState()
-    val dataSource by viewModel.dataSource.collectAsState()
-    val connectedDevice by viewModel.connectedDevice.collectAsState()
-    val fieldAnomaly by viewModel.fieldAnomaly.collectAsState()
+    LcarsScreenScaffold(title = "RAD SCANNER", headerColor = LcarsRed) {
 
-    // Alert color pulsing animation
-    val infiniteTransition = rememberInfiniteTransition(label = "alert_pulse")
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            LcarsAnimatedValue(value = cpm, label = "COUNTS/MIN", unit = "CPM", color = LcarsYellow, decimalPlaces = 0)
+            LcarsAnimatedValue(value = doseMicroSv, label = "DOSE RATE", unit = "μSv/h", color = LcarsRed, decimalPlaces = 3)
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // Alert ring
+        AlertRing(
+            level = alertLevel,
+            modifier = Modifier.size(80.dp).align(Alignment.CenterHorizontally)
+        )
+
+        Spacer(Modifier.height(12.dp))
+
+        // Geiger counter particle field
+        Text("PARTICLE DETECTION GRID", color = LcarsRed.copy(0.6f), fontSize = 10.sp, fontFamily = FontFamily.Monospace, letterSpacing = 2.sp)
+        Spacer(Modifier.height(4.dp))
+        GeigerField(
+            cpm = cpm,
+            modifier = Modifier.fillMaxWidth().height(160.dp)
+        )
+
+        Spacer(Modifier.height(12.dp))
+
+        LcarsBarGraph(
+            data = listOf(
+                "CPM" to (cpm / 200f).coerceIn(0f, 1f),
+                "DOSE" to (doseMicroSv / 5f).coerceIn(0f, 1f),
+                "ALERT" to (alertLevel / 3f)
+            )
+        )
+    }
+}
+
+@Composable
+private fun AlertRing(level: Int, modifier: Modifier) {
+    val color = when (level) {
+        0 -> LcarsBlue
+        1 -> LcarsYellow
+        2 -> LcarsOrange
+        else -> LcarsRed
+    }
+    val label = when (level) {
+        0 -> "NOMINAL"
+        1 -> "ELEVATED"
+        2 -> "HIGH"
+        else -> "DANGER"
+    }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "alert")
     val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.7f,
+        initialValue = 0.3f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(500, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
+            tween(if (level >= 2) 300 else 1000, easing = LinearEasing),
+            RepeatMode.Reverse
         ),
-        label = "pulse_alpha"
+        label = "alertPulse"
     )
 
-    // Determine alert color based on level
-    val baseAlertColor = when (alertLevel) {
-        AlertLevel.NOMINAL -> LcarsBlue
-        AlertLevel.ELEVATED -> LcarsOrange
-        AlertLevel.ALERT -> LcarsRed
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val cx = size.width / 2f
+            val cy = size.height / 2f
+            val r = minOf(cx, cy) * 0.85f
+            drawCircle(color.copy(alpha = pulseAlpha * 0.2f), r, Offset(cx, cy))
+            drawCircle(color.copy(alpha = pulseAlpha), r, Offset(cx, cy), style = Stroke(4f))
+        }
+        Text(label, color = color, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
     }
+}
 
-    // Apply pulsing only for non-nominal states
-    val alertColor by animateColorAsState(
-        targetValue = if (alertLevel != AlertLevel.NOMINAL) {
-            baseAlertColor.copy(alpha = pulseAlpha)
-        } else {
-            baseAlertColor
-        },
-        label = "alert_color"
+@Composable
+private fun GeigerField(cpm: Float, modifier: Modifier) {
+    // Particles appear and fade based on CPM
+    data class Particle(val x: Float, val y: Float, val born: Long, val lifetime: Long)
+
+    val particles = remember { mutableStateListOf<Particle>() }
+    val infiniteTransition = rememberInfiniteTransition(label = "geiger")
+    val tick by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1000f,
+        animationSpec = infiniteRepeatable(tween(1000, easing = LinearEasing)),
+        label = "tick"
     )
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(LcarsBlack)
-            .padding(16.dp)
-    ) {
-        // Header
-        LcarsSectionHeader(
-            title = "RADIATION SCANNER",
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Status Row: Data Source Badge + Root Status + Connected Device
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Data Source Badge
-            DataSourceBadge(dataSource = dataSource)
-
-            // Root Status Indicator
-            RootStatusIndicator(isRooted = viewModel.isRooted)
-        }
-
-        // Connected Device (if any)
-        connectedDevice?.let { device ->
-            Spacer(modifier = Modifier.height(8.dp))
-            ConnectedDeviceDisplay(deviceName = device)
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Main Readings Display
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            // CPM Display
-            LcarsDataCard(
-                title = "CPM",
-                value = String.format("%.1f", cpm),
-                unit = "cpm",
-                accentColor = alertColor,
-                modifier = Modifier.weight(1f)
-            )
-
-            Spacer(modifier = Modifier.width(16.dp))
-
-            // µSv/hr Display
-            LcarsDataCard(
-                title = "µSv/hr",
-                value = String.format("%.4f", microSievert),
-                unit = "µSv/hr",
-                accentColor = alertColor,
-                modifier = Modifier.weight(1f)
+    // Spawn particles proportional to CPM
+    LaunchedEffect(tick.toInt() / 50) { // ~20 spawns per second at most
+        val spawnChance = (cpm / 60f) * 0.05f // probability per tick
+        if (Random.nextFloat() < spawnChance) {
+            particles.add(
+                Particle(
+                    x = Random.nextFloat(),
+                    y = Random.nextFloat(),
+                    born = System.currentTimeMillis(),
+                    lifetime = Random.nextLong(400, 1200)
+                )
             )
         }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Field Anomaly Gauge
-        Text(
-            text = "FIELD ANOMALY",
-            color = LcarsTan,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 8.dp)
-        )
-        LcarsGauge(
-            value = fieldAnomaly,
-            minValue = 0f,
-            maxValue = 1f,
-            label = "Anomaly",
-            unit = "%",
-            accentColor = LcarsRed,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Alert Level Display
-        AlertLevelDisplay(
-            alertLevel = alertLevel,
-            color = alertColor,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        // Scan Control Button
-        LcarsButton(
-            text = if (isScanning) "STOP SCAN" else "START SCAN",
-            onClick = {
-                if (isScanning) {
-                    viewModel.stopScanning()
-                } else {
-                    viewModel.startScanning()
-                }
-            },
-            color = if (isScanning) LcarsRed else LcarsBlue,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp)
-        )
-    }
-}
-
-/**
- * Data Source Badge - Shows the current data source with LCARS styling
- */
-@Composable
-private fun DataSourceBadge(
-    dataSource: DataSource,
-    modifier: Modifier = Modifier
-) {
-    val (text, color) = when (dataSource) {
-        DataSource.LIVE_SENSOR -> "LIVE SENSOR" to LcarsBlue
-        DataSource.BT_DEVICE -> "BT DEVICE" to LcarsPurple
-        DataSource.ROOT_ENHANCED -> "ROOT ENHANCED" to LcarsOrange
-        DataSource.SIMULATED -> "SIMULATED" to LcarsTan
+        // Remove dead particles
+        val now = System.currentTimeMillis()
+        particles.removeAll { now - it.born > it.lifetime }
     }
 
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(topStart = 16.dp, bottomEnd = 16.dp))
-            .background(color)
-            .padding(horizontal = 12.dp, vertical = 6.dp)
-    ) {
-        Text(
-            text = text,
-            color = LcarsBlack,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold
-        )
-    }
-}
+    Canvas(modifier = modifier) {
+        drawRect(LcarsDarkPanel)
 
-/**
- * Root Status Indicator - Shows whether device is rooted
- */
-@Composable
-private fun RootStatusIndicator(
-    isRooted: Boolean,
-    modifier: Modifier = Modifier
-) {
-    val (text, color) = if (isRooted) {
-        "ROOT" to LcarsOrange
-    } else {
-        "STANDARD" to LcarsTan
-    }
+        // Grid
+        val gridStep = 20f
+        var gx = 0f
+        while (gx < size.width) {
+            drawLine(LcarsRed.copy(0.05f), Offset(gx, 0f), Offset(gx, size.height), 1f)
+            gx += gridStep
+        }
+        var gy = 0f
+        while (gy < size.height) {
+            drawLine(LcarsRed.copy(0.05f), Offset(0f, gy), Offset(size.width, gy), 1f)
+            gy += gridStep
+        }
 
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .clip(RoundedCornerShape(4.dp))
-                .background(color)
-        )
-        Spacer(modifier = Modifier.width(6.dp))
-        Text(
-            text = text,
-            color = color,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold
-        )
-    }
-}
-
-/**
- * Connected Device Display - Shows paired Bluetooth dosimeter name
- */
-@Composable
-private fun ConnectedDeviceDisplay(
-    deviceName: String,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .border(1.dp, LcarsPurple, RoundedCornerShape(4.dp))
-            .padding(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = "CONNECTED:",
-            color = LcarsPurple,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            text = deviceName,
-            color = Color.White,
-            fontSize = 14.sp
-        )
-    }
-}
-
-/**
- * Alert Level Display - Shows current alert status with appropriate styling
- */
-@Composable
-private fun AlertLevelDisplay(
-    alertLevel: AlertLevel,
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    val statusText = when (alertLevel) {
-        AlertLevel.NOMINAL -> "NOMINAL - SAFE"
-        AlertLevel.ELEVATED -> "ELEVATED - CAUTION"
-        AlertLevel.ALERT -> "ALERT - DANGER"
-    }
-
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(color.copy(alpha = 0.2f))
-            .border(2.dp, color, RoundedCornerShape(8.dp))
-            .padding(16.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = statusText,
-            color = color,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold
-        )
+        // Particles
+        val now = System.currentTimeMillis()
+        particles.forEach { p ->
+            val age = (now - p.born).toFloat() / p.lifetime
+            val alpha = (1f - age).coerceIn(0f, 1f)
+            val px = p.x * size.width
+            val py = p.y * size.height
+            drawCircle(LcarsYellow.copy(alpha = alpha), 4f, Offset(px, py))
+            drawCircle(LcarsYellow.copy(alpha = alpha * 0.3f), 10f, Offset(px, py))
+        }
     }
 }

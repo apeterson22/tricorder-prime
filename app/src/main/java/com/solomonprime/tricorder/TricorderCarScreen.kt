@@ -2,6 +2,8 @@ package com.solomonprime.tricorder
 
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
+import androidx.car.app.model.Action
+import androidx.car.app.model.ActionStrip
 import androidx.car.app.model.CarColor
 import androidx.car.app.model.GridItem
 import androidx.car.app.model.GridTemplate
@@ -66,14 +68,34 @@ class TricorderCarScreen(carContext: CarContext) : Screen(carContext) {
             )
             .build()
 
+        val actionStrip = ActionStrip.Builder()
+            .addAction(
+                Action.Builder()
+                    .setTitle("MAP")
+                    .setOnClickListener {
+                        screenManager.push(TricorderCarMapScreen(carContext))
+                    }
+                    .build()
+            )
+            .addAction(
+                Action.Builder()
+                    .setTitle("MEDIA")
+                    .setOnClickListener {
+                        screenManager.push(TricorderCarMediaScreen(carContext))
+                    }
+                    .build()
+            )
+            .build()
+
         val builder = GridTemplate.Builder()
             .setTitle("TRICORDER OBD2")
             .setSingleList(gridItems)
+            .setActionStrip(actionStrip)
 
         // DTC warning row
         if (data.dtcCount > 0) {
             builder.setHeaderAction(
-                androidx.car.app.model.Action.Builder()
+                Action.Builder()
                     .setTitle("⚠ ${data.dtcCount} DTC(s)")
                     .setBackgroundColor(CarColor.RED)
                     .setOnClickListener { /* no-op on Auto, check phone */ }

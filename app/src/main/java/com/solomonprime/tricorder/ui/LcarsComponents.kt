@@ -35,6 +35,7 @@ private fun getTabIcon(tabId: String): String = when (tabId) {
     "PIPE" -> "⊃"
     "RF" -> "⌁"
     "OBD" -> "⛽"
+    "AI" -> "◇"
     else -> "◆"
 }
 

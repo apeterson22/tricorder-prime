@@ -1,188 +1,151 @@
 package com.solomonprime.tricorder.ui
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.solomonprime.tricorder.ui.theme.LcarsBlack
-import com.solomonprime.tricorder.ui.theme.LcarsBlue
-import com.solomonprime.tricorder.ui.theme.LcarsOrange
-import com.solomonprime.tricorder.ui.theme.LcarsRed
-import com.solomonprime.tricorder.ui.theme.LcarsTan
-import com.solomonprime.tricorder.viewmodel.AcousticViewModel
+import com.solomonprime.tricorder.ui.theme.*
+import kotlin.math.sin
 
 @Composable
 fun AcousticScannerScreen(
-    viewModel: AcousticViewModel = viewModel()
+    waveformData: List<Float> = List(128) { sin(it * 0.2f) * 0.5f }, // -1..1
+    fftData: List<Float> = List(64) { (0.5f - it * 0.005f).coerceAtLeast(0f) }, // 0..1 magnitude
+    dbLevel: Float = 42f,
+    peakFrequency: Float = 440f
 ) {
-    val decibels by viewModel.decibels.collectAsState()
-    val waveform by viewModel.waveform.collectAsState()
-    val freqBand by viewModel.freqBand.collectAsState()
-    val dominantFrequency by viewModel.dominantFrequency.collectAsState()
-    val snrDb by viewModel.snrDb.collectAsState()
+    LcarsScreenScaffold(title = "ACO SCANNER", headerColor = LcarsPurple) {
 
-    // Determine waveform color based on decibel level
-    val waveformColor = when {
-        decibels < 50f -> LcarsBlue
-        decibels <= 75f -> LcarsOrange
-        else -> LcarsRed
-    }
-
-    DisposableEffect(Unit) {
-        viewModel.startRecording()
-        onDispose {
-            viewModel.stopRecording()
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            LcarsAnimatedValue(value = dbLevel, label = "LEVEL", unit = "dB", color = LcarsPurple)
+            LcarsAnimatedValue(value = peakFrequency, label = "PEAK FREQ", unit = "Hz", color = LcarsYellow, decimalPlaces = 0)
         }
-    }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(LcarsBlack)
-            .padding(16.dp)
-    ) {
-        Text(
-            text = "ACOUSTIC SCANNER",
-            color = LcarsOrange,
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 16.dp)
+        Spacer(Modifier.height(12.dp))
+
+        // Oscilloscope waveform (top)
+        Text("WAVEFORM", color = LcarsPurple.copy(0.6f), fontSize = 10.sp, fontFamily = FontFamily.Monospace, letterSpacing = 2.sp)
+        Spacer(Modifier.height(4.dp))
+        OscilloscopeView(
+            data = waveformData,
+            modifier = Modifier.fillMaxWidth().height(120.dp)
         )
 
-        // First row: Amplitude and Freq Band
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            LcarsDataCard(
-                title = "AMPLITUDE",
-                value = String.format("%.1f dB", decibels),
-                color = LcarsTan,
-                modifier = Modifier.weight(1f)
+        Spacer(Modifier.height(12.dp))
+
+        // Frequency spectrum (bottom)
+        Text("FREQUENCY SPECTRUM", color = LcarsYellow.copy(0.6f), fontSize = 10.sp, fontFamily = FontFamily.Monospace, letterSpacing = 2.sp)
+        Spacer(Modifier.height(4.dp))
+        FrequencySpectrum(
+            data = fftData,
+            modifier = Modifier.fillMaxWidth().height(120.dp)
+        )
+
+        Spacer(Modifier.height(12.dp))
+
+        LcarsBarGraph(
+            data = listOf(
+                "LOW" to fftData.take(16).average().toFloat(),
+                "MID" to fftData.drop(16).take(24).average().toFloat(),
+                "HIGH" to fftData.drop(40).average().toFloat(),
+                "dB" to (dbLevel / 120f).coerceIn(0f, 1f)
             )
-            Spacer(modifier = Modifier.width(16.dp))
-            LcarsDataCard(
-                title = "FREQ BAND",
-                value = freqBand,
-                color = LcarsTan,
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Second row: Dominant Frequency and SNR
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            LcarsDataCard(
-                title = "DOMINANT FREQ",
-                value = if (dominantFrequency > 0) String.format("%.0f Hz", dominantFrequency) else "-- Hz",
-                color = LcarsBlue,
-                modifier = Modifier.weight(1f)
-            )
-            Spacer(modifier = Modifier.width(16.dp))
-            LcarsDataCard(
-                title = "SNR",
-                value = String.format("%.1f dB", snrDb),
-                color = LcarsBlue,
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Waveform Visualizer
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .background(Color(0xFF111111))
-                .padding(8.dp)
-        ) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                if (waveform.isEmpty()) return@Canvas
-
-                val width = size.width
-                val height = size.height
-                val stepX = width / (waveform.size - 1).coerceAtLeast(1)
-                
-                val path = Path()
-                waveform.forEachIndexed { index, value ->
-                    val x = index * stepX
-                    val y = height - (value * height) // Invert Y so 0 is bottom
-                    
-                    if (index == 0) {
-                        path.moveTo(x, y)
-                    } else {
-                        path.lineTo(x, y)
-                    }
-                }
-
-                drawPath(
-                    path = path,
-                    color = waveformColor,
-                    style = Stroke(width = 4f)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Description text
-        Text(
-            text = "ACOUSTIC ANALYSIS — Real-time microphone waveform. Amplitude shows sound pressure in dB. Dominant frequency band indicates primary sound source.",
-            color = LcarsTan.copy(alpha = 0.7f),
-            fontSize = 12.sp,
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp)
         )
     }
 }
 
-/**
- * LCARS-style data card for displaying titled values.
- */
 @Composable
-fun LcarsDataCard(
-    title: String,
-    value: String,
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier
-            .background(Color(0xFF1A1A1A))
-            .padding(12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = title,
-            color = color.copy(alpha = 0.7f),
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = value,
-            color = color,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold
-        )
+private fun OscilloscopeView(data: List<Float>, modifier: Modifier) {
+    val infiniteTransition = rememberInfiniteTransition(label = "oscPhase")
+    val phase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 6.28f,
+        animationSpec = infiniteRepeatable(tween(2000, easing = LinearEasing)),
+        label = "phase"
+    )
+
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val midY = h / 2f
+
+        // Background
+        drawRect(LcarsDarkPanel)
+
+        // Grid lines
+        for (i in 1..3) {
+            val y = h * i / 4f
+            drawLine(LcarsTan.copy(0.08f), Offset(0f, y), Offset(w, y), 1f)
+        }
+        for (i in 1..7) {
+            val x = w * i / 8f
+            drawLine(LcarsTan.copy(0.08f), Offset(x, 0f), Offset(x, h), 1f)
+        }
+        // Center line
+        drawLine(LcarsTan.copy(0.15f), Offset(0f, midY), Offset(w, midY), 1f)
+
+        // Waveform path
+        if (data.isNotEmpty()) {
+            val path = Path()
+            val step = w / (data.size - 1).coerceAtLeast(1)
+            data.forEachIndexed { i, v ->
+                val x = i * step
+                val sampleVal = v * sin(phase + i * 0.1f) // subtle animation
+                val y = midY - sampleVal * midY * 0.8f
+                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            drawPath(path, LcarsPurple, style = Stroke(2f))
+            // Glow
+            drawPath(path, LcarsPurple.copy(alpha = 0.2f), style = Stroke(6f))
+        }
+    }
+}
+
+@Composable
+private fun FrequencySpectrum(data: List<Float>, modifier: Modifier) {
+    var appeared by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { appeared = true }
+
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+
+        drawRect(LcarsDarkPanel)
+
+        if (data.isEmpty()) return@Canvas
+
+        val barCount = data.size
+        val totalGap = barCount * 2f
+        val barW = ((w - totalGap) / barCount).coerceAtLeast(2f)
+
+        data.forEachIndexed { i, magnitude ->
+            val x = i * (barW + 2f)
+            val barH = magnitude.coerceIn(0f, 1f) * h * (if (appeared) 1f else 0f)
+
+            // Color by frequency band
+            val color = when {
+                i < barCount * 0.25f -> LcarsPurple   // sub-bass / bass
+                i < barCount * 0.5f -> LcarsBlue      // low-mid
+                i < barCount * 0.75f -> LcarsYellow   // high-mid
+                else -> LcarsRed                        // treble
+            }
+
+            drawRect(
+                color = color,
+                topLeft = Offset(x, h - barH),
+                size = Size(barW, barH)
+            )
+        }
     }
 }

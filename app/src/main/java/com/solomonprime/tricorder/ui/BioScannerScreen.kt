@@ -1,159 +1,218 @@
 package com.solomonprime.tricorder.ui
 
-import androidx.compose.foundation.background
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.solomonprime.tricorder.ui.theme.*
-import com.solomonprime.tricorder.viewmodel.BioScannerViewModel
 
 @Composable
 fun BioScannerScreen(
-    modifier: Modifier = Modifier,
-    viewModel: BioScannerViewModel = viewModel()
+    heartRate: Float = 72f,
+    spo2: Float = 98f,
+    stressIndex: Float = 35f, // 0-100
+    bodyTemp: Float = 36.6f,
+    respiratoryRate: Float = 16f
 ) {
-    val heartRate by viewModel.heartRate.collectAsState()
-    val bloodOxygen by viewModel.bloodOxygen.collectAsState()
-    val skinTemp by viewModel.skinTemp.collectAsState()
-    val stressIndex by viewModel.stressIndex.collectAsState()
-    val movementLevel by viewModel.movementLevel.collectAsState()
-    val dataSource by viewModel.dataSource.collectAsState()
-    val pairedDevices by viewModel.pairedDevices.collectAsState()
-    val connectedDevice by viewModel.connectedDeviceName.collectAsState()
+    LcarsScreenScaffold(title = "BIO SCANNER", headerColor = LcarsRed) {
 
-    LaunchedEffect(Unit) {
-        viewModel.startScan()
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            LcarsAnimatedValue(value = heartRate, label = "HEART RATE", unit = "BPM", color = LcarsRed, decimalPlaces = 0)
+            LcarsAnimatedValue(value = bodyTemp, label = "BODY TEMP", unit = "°C", color = LcarsOrange)
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // ECG waveform
+        Text("CARDIAC MONITOR", color = LcarsRed.copy(0.6f), fontSize = 10.sp, fontFamily = FontFamily.Monospace, letterSpacing = 2.sp)
+        Spacer(Modifier.height(4.dp))
+        EcgWaveform(
+            heartRate = heartRate,
+            modifier = Modifier.fillMaxWidth().height(100.dp)
+        )
+
+        Spacer(Modifier.height(12.dp))
+
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+            // SpO2 blood drop
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("SpO2", color = LcarsBlue.copy(0.6f), fontSize = 10.sp, fontFamily = FontFamily.Monospace, letterSpacing = 2.sp)
+                Spacer(Modifier.height(4.dp))
+                BloodDropGauge(
+                    value = spo2 / 100f,
+                    modifier = Modifier.size(60.dp, 80.dp)
+                )
+                LcarsAnimatedValue(value = spo2, unit = "%", color = LcarsBlue, decimalPlaces = 0)
+            }
+
+            // Stress aura
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("STRESS", color = LcarsPurple.copy(0.6f), fontSize = 10.sp, fontFamily = FontFamily.Monospace, letterSpacing = 2.sp)
+                Spacer(Modifier.height(4.dp))
+                StressAura(
+                    stressIndex = stressIndex,
+                    modifier = Modifier.size(80.dp)
+                )
+                LcarsAnimatedValue(value = stressIndex, unit = "", color = LcarsPurple, decimalPlaces = 0)
+            }
+
+            // Respiratory
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("RESP", color = LcarsYellow.copy(0.6f), fontSize = 10.sp, fontFamily = FontFamily.Monospace, letterSpacing = 2.sp)
+                Spacer(Modifier.height(4.dp))
+                LcarsAnimatedValue(value = respiratoryRate, label = "", unit = "/min", color = LcarsYellow, decimalPlaces = 0)
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        LcarsBarGraph(
+            data = listOf(
+                "HR" to (heartRate / 200f).coerceIn(0f, 1f),
+                "SpO2" to (spo2 / 100f),
+                "STRS" to (stressIndex / 100f),
+                "TEMP" to ((bodyTemp - 35f) / 5f).coerceIn(0f, 1f),
+                "RESP" to (respiratoryRate / 40f).coerceIn(0f, 1f)
+            )
+        )
     }
+}
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(LcarsBlack)
-            .padding(12.dp)
-            .verticalScroll(rememberScrollState())
-    ) {
-        LcarsSectionHeader(title = "Biometric Analysis", color = LcarsOrange)
+@Composable
+private fun EcgWaveform(heartRate: Float, modifier: Modifier) {
+    val infiniteTransition = rememberInfiniteTransition(label = "ecg")
+    val scrollOffset by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            tween((60000 / heartRate.coerceAtLeast(30f)).toInt(), easing = LinearEasing)
+        ),
+        label = "ecgScroll"
+    )
 
-        // Data source badge
-        val (badgeText, badgeColor) = when (dataSource) {
-            "PHONE_SENSORS" -> "● LIVE SENSORS" to LcarsOrange
-            "BT_DEVICE" -> "● BT DEVICE" to LcarsBlue
-            else -> "◌ SIMULATED" to LcarsTan
-        }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(badgeColor.copy(alpha = 0.25f))
-                    .padding(horizontal = 10.dp, vertical = 4.dp)
-            ) {
-                Text(
-                    text = badgeText,
-                    color = badgeColor,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val midY = h / 2f
 
-            // Root status
-            val rootColor = if (viewModel.isRooted) LcarsOrange else LcarsTan
-            Text(
-                text = if (viewModel.isRooted) "ROOT: ACTIVE" else "ROOT: INACTIVE",
-                color = rootColor,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
+        drawRect(LcarsDarkPanel)
 
-        // Connected device name
-        if (connectedDevice != null) {
-            Text(
-                text = "LINKED: ${connectedDevice!!.uppercase()}",
-                color = LcarsBlue,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(vertical = 2.dp)
-            )
-        }
+        // Grid
+        for (i in 1..3) drawLine(LcarsRed.copy(0.06f), Offset(0f, h * i / 4f), Offset(w, h * i / 4f), 1f)
 
-        LcarsScanningIndicator(isActive = true, color = LcarsOrange)
+        // ECG pattern: flat-P-flat-QRS-flat-T-flat repeated
+        val path = Path()
+        val cycleWidth = w * 0.5f // half screen per cycle
+        val offset = scrollOffset * cycleWidth
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Core biometric cards
-        LcarsDataCard(
-            title = "Heart Rate",
-            value = "$heartRate",
-            unit = "bpm",
-            accentColor = LcarsRed
-        )
-
-        LcarsDataCard(
-            title = "Blood Oxygen",
-            value = "%.1f".format(bloodOxygen),
-            unit = "%",
-            accentColor = LcarsBlue
-        )
-
-        LcarsDataCard(
-            title = "Skin Temp",
-            value = "%.1f".format(skinTemp),
-            unit = "°C",
-            accentColor = LcarsOrange
-        )
-
-        LcarsDataCard(
-            title = "Stress Index",
-            value = "%.2f".format(stressIndex),
-            unit = "",
-            accentColor = LcarsPurple
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Movement level gauge
-        LcarsGauge(
-            value = movementLevel,
-            minValue = 0f,
-            maxValue = 1f,
-            label = "Movement Level",
-            unit = "",
-            accentColor = LcarsBlue
-        )
-
-        // Paired devices list
-        if (pairedDevices.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(12.dp))
-            LcarsSectionHeader(title = "Paired Devices", color = LcarsTan)
-            pairedDevices.forEach { name ->
-                val isConnected = name == connectedDevice
-                Text(
-                    text = (if (isConnected) "▸ " else "  ") + name,
-                    color = if (isConnected) LcarsBlue else LcarsTan,
-                    fontSize = 12.sp,
-                    fontWeight = if (isConnected) FontWeight.Bold else FontWeight.Normal,
-                    modifier = Modifier.padding(start = 12.dp, top = 2.dp)
-                )
+        fun ecgY(x: Float): Float {
+            val phase = ((x + offset) % cycleWidth) / cycleWidth
+            return when {
+                phase < 0.1f -> midY // baseline
+                phase < 0.15f -> midY - h * 0.08f // P wave
+                phase < 0.2f -> midY
+                phase < 0.22f -> midY + h * 0.05f // Q
+                phase < 0.28f -> midY - h * 0.4f  // R peak
+                phase < 0.32f -> midY + h * 0.12f // S
+                phase < 0.4f -> midY
+                phase < 0.5f -> midY - h * 0.1f  // T wave
+                else -> midY
             }
         }
+
+        val steps = (w / 2f).toInt()
+        for (i in 0..steps) {
+            val x = i * 2f
+            val y = ecgY(x)
+            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        }
+
+        drawPath(path, LcarsRed, style = Stroke(2f))
+        drawPath(path, LcarsRed.copy(alpha = 0.15f), style = Stroke(6f))
+    }
+}
+
+@Composable
+private fun BloodDropGauge(value: Float, modifier: Modifier) {
+    val animatedFill by animateFloatAsState(
+        targetValue = value.coerceIn(0f, 1f),
+        animationSpec = spring(dampingRatio = 0.6f),
+        label = "blood"
+    )
+
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val cx = w / 2f
+
+        // Drop shape path
+        val dropPath = Path().apply {
+            moveTo(cx, 0f) // top point
+            cubicTo(cx + w * 0.5f, h * 0.4f, cx + w * 0.4f, h * 0.9f, cx, h)
+            cubicTo(cx - w * 0.4f, h * 0.9f, cx - w * 0.5f, h * 0.4f, cx, 0f)
+            close()
+        }
+
+        // Outline
+        drawPath(dropPath, LcarsRed.copy(alpha = 0.3f), style = Stroke(2f))
+
+        // Fill from bottom using clip
+        clipRect(top = h * (1f - animatedFill), bottom = h) {
+            drawPath(dropPath, LcarsRed.copy(alpha = 0.6f), style = Fill)
+        }
+    }
+}
+
+@Composable
+private fun StressAura(stressIndex: Float, modifier: Modifier) {
+    val normalizedStress = (stressIndex / 100f).coerceIn(0f, 1f)
+    val auraColor by animateColorAsState(
+        targetValue = when {
+            normalizedStress < 0.3f -> LcarsBlue
+            normalizedStress < 0.6f -> LcarsYellow
+            normalizedStress < 0.8f -> LcarsOrange
+            else -> LcarsRed
+        },
+        animationSpec = tween(1000),
+        label = "aura"
+    )
+
+    val infiniteTransition = rememberInfiniteTransition(label = "stressAura")
+    val pulse by infiniteTransition.animateFloat(
+        initialValue = 0.6f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            tween((2000 * (1f - normalizedStress * 0.7f)).toInt(), easing = FastOutSlowInEasing),
+            RepeatMode.Reverse
+        ),
+        label = "auraPulse"
+    )
+
+    Canvas(modifier = modifier) {
+        val cx = size.width / 2f
+        val cy = size.height / 2f
+        val r = minOf(cx, cy)
+
+        // Outer aura
+        drawCircle(auraColor.copy(alpha = 0.1f * pulse), r, Offset(cx, cy))
+        drawCircle(auraColor.copy(alpha = 0.2f * pulse), r * 0.7f, Offset(cx, cy))
+        drawCircle(auraColor.copy(alpha = 0.4f * pulse), r * 0.4f, Offset(cx, cy))
+
+        // Center indicator
+        drawCircle(auraColor, r * 0.15f, Offset(cx, cy))
     }
 }

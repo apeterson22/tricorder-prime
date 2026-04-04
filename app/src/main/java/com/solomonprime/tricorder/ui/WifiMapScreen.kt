@@ -20,9 +20,9 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.solomonprime.tricorder.model.WifiMapPoint
 import com.solomonprime.tricorder.ui.theme.*
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.solomonprime.tricorder.viewmodel.WifiMapViewModel
 import kotlin.math.abs
 import kotlin.math.cos

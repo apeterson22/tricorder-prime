@@ -2,6 +2,8 @@ package com.solomonprime.tricorder.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -65,6 +67,12 @@ fun LcarsNavigationBar(
         
         Spacer(modifier = Modifier.width(8.dp))
         
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
         items.forEachIndexed { index, item ->
             val isSelected = item == selectedItem
             val color = when (item) {
@@ -89,8 +97,9 @@ fun LcarsNavigationBar(
                 Spacer(modifier = Modifier.width(4.dp))
             }
         }
+        } // end scrollable Row
         
-        Spacer(modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.width(8.dp))
         
         // End decorative cap
         Box(

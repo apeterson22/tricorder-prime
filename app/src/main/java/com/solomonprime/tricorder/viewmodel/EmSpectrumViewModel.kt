@@ -19,6 +19,9 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import com.solomonprime.tricorder.model.BluetoothSignal
 import com.solomonprime.tricorder.model.WifiSignal
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -134,8 +137,14 @@ class EmSpectrumViewModel(application: Application) : AndroidViewModel(applicati
                         frequency = scanResult.frequency
                     )
                 }
-            // Trigger next scan
-            wifiManager.startScan()
+            // Trigger next scan after throttle delay (Android throttles to ~4 scans/2min)
+            viewModelScope.launch {
+                kotlinx.coroutines.delay(30_000L)
+                try {
+                    @Suppress("DEPRECATION")
+                    wifiManager.startScan()
+                } catch (_: Exception) {}
+            }
         } catch (_: SecurityException) {
             // Permission revoked at runtime
         }

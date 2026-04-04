@@ -435,6 +435,15 @@ class ConnectedDeviceManager(private val context: Context) : SensorEventListener
     }
 
     private fun refreshConnectedDevices() {
+        // Check for BLUETOOTH_CONNECT permission on Android 12+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (context.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                // Permission not granted yet, skip refresh
+                return
+            }
+        }
+
         val devices = mutableListOf<ConnectedDevice>()
 
         // Get connected headset devices

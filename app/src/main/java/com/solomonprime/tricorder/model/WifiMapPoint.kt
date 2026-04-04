@@ -6,5 +6,7 @@ data class WifiMapPoint(
     val rssi: Int,
     val latitude: Double,
     val longitude: Double,
-    val timestamp: Long
+    val timestamp: Long,
+    val relativeX: Float = 0f,
+    val relativeY: Float = 0f
 )

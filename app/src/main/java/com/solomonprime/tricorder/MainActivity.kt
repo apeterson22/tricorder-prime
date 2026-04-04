@@ -23,7 +23,9 @@ import androidx.navigation.compose.rememberNavController
 import com.solomonprime.tricorder.ui.AcousticScannerScreen
 import com.solomonprime.tricorder.ui.DashboardScreen
 import com.solomonprime.tricorder.ui.BioScannerScreen
+import com.solomonprime.tricorder.ui.PipeLeakScreen
 import com.solomonprime.tricorder.ui.RadiationScannerScreen
+import com.solomonprime.tricorder.ui.WifiMapScreen
 import com.solomonprime.tricorder.ui.EmSpectrumScannerScreen
 import com.solomonprime.tricorder.ui.EnvironmentalScannerScreen
 import com.solomonprime.tricorder.ui.GeophysicalScannerScreen
@@ -97,7 +99,7 @@ fun PermissionWrapper(content: @Composable () -> Unit) {
 @Composable
 fun TricorderApp() {
     val navController = rememberNavController()
-    val navItems = listOf("HOME", "ENV", "GEO", "EM", "ACO", "BIO", "RAD")
+    val navItems = listOf("HOME", "ENV", "GEO", "EM", "ACO", "BIO", "RAD", "MAP", "PIPE")
     
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: "ENV"
@@ -163,6 +165,12 @@ fun TricorderNavHost(
         }
         composable("RAD") {
             RadiationScannerScreen()
+        }
+        composable("MAP") {
+            WifiMapScreen()
+        }
+        composable("PIPE") {
+            PipeLeakScreen()
         }
     }
 }

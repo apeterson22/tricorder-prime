@@ -83,6 +83,8 @@ fun LcarsNavigationBar(
                 "ACO" -> if (isSelected) LcarsRed else LcarsTan
                 "BIO" -> if (isSelected) LcarsBlue else LcarsTan
                 "RAD" -> if (isSelected) LcarsPink else LcarsTan
+                "MAP" -> if (isSelected) LcarsBlue else LcarsTan
+                "PIPE" -> if (isSelected) LcarsOrange else LcarsTan
                 else -> if (isSelected) LcarsOrange else LcarsTan
             }
             

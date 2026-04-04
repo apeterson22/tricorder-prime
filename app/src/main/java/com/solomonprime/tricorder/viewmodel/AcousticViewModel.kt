@@ -7,6 +7,7 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.solomonprime.tricorder.data.ConnectedDeviceManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -24,7 +25,16 @@ import kotlin.math.log10
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-class AcousticViewModel(application: Application) : AndroidViewModel(application) {
+class AcousticViewModel(
+    application: Application,
+    private val deviceManager: ConnectedDeviceManager? = null
+) : AndroidViewModel(application) {
+
+    private fun getAudioSource(): Int =
+        if (deviceManager?.preferHfpMic?.value == true)
+            MediaRecorder.AudioSource.VOICE_COMMUNICATION
+        else
+            MediaRecorder.AudioSource.MIC
 
     private val sampleRate = 44100
     private val channelConfig = AudioFormat.CHANNEL_IN_MONO
@@ -163,7 +173,7 @@ class AcousticViewModel(application: Application) : AndroidViewModel(application
 
         try {
             audioRecord = AudioRecord(
-                MediaRecorder.AudioSource.MIC,
+                getAudioSource(),
                 sampleRate,
                 channelConfig,
                 audioFormat,

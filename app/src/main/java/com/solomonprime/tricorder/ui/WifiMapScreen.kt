@@ -359,7 +359,7 @@ private fun WifiRoomMapCanvas(
                 else -> purpleColor
             }
 
-            val radius = ((point.rssi + 100).coerceIn(0, 60) / 60f * 12f + 4f) * scale.coerceIn(0.5f, 2f)
+            val radius = ((point.rssi + 100).coerceIn(0, 60) / 60f * 16f + 8f) * scale.coerceIn(0.6f, 2f)
 
             drawCircle(
                 color = color.copy(alpha = 0.6f),
@@ -369,18 +369,36 @@ private fun WifiRoomMapCanvas(
         }
 
         // --- SSID labels at strongest point per network ---
-        for ((ssid, point) in strongestPerNetwork) {
+        for ((ssid, point) in strongestPerNetwork.entries.sortedByDescending { it.value.rssi }.take(5)) {
             val px = centerX + point.relativeX * ppm
             val py = centerY - point.relativeY * ppm
+            // Draw background rect for text
+            val textPaint = android.graphics.Paint().apply {
+                color = android.graphics.Color.rgb(0xFF, 0x99, 0x00)
+                textSize = (32f * scale.coerceIn(0.8f, 1.5f))
+                isAntiAlias = true
+                typeface = android.graphics.Typeface.MONOSPACE
+            }
+            val textWidth = textPaint.measureText(ssid)
+            val textHeight = textPaint.textSize
+            
+            // Background rect
+            drawContext.canvas.nativeCanvas.drawRect(
+                px + 8f,
+                py - textHeight - 4f,
+                px + textWidth + 16f,
+                py + 4f,
+                android.graphics.Paint().apply {
+                    color = android.graphics.Color.argb(200, 0, 0, 0)
+                }
+            )
+            
+            // Text
             drawContext.canvas.nativeCanvas.drawText(
                 ssid,
                 px + 12f,
                 py - 8f,
-                android.graphics.Paint().apply {
-                    color = android.graphics.Color.rgb(0xFF, 0x99, 0x00)
-                    textSize = (24f * scale.coerceIn(0.6f, 1.5f))
-                    isAntiAlias = true
-                }
+                textPaint
             )
         }
 

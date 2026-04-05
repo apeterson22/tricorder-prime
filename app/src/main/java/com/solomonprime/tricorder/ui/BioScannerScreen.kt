@@ -45,6 +45,23 @@ fun BioScannerScreen(
 
     LcarsScreenScaffold(title = "BIO SCANNER", headerColor = LcarsRed) {
 
+        // Data source indicator
+        Text(
+            text = when (dataSource) {
+                "WEARABLE" -> "📱 CONNECTED WEARABLE"
+                "PHONE_SENSORS" -> "📲 PHONE SENSORS"
+                else -> "🔄 SIMULATED DATA"
+            },
+            color = when (dataSource) {
+                "WEARABLE" -> LcarsBlue
+                "PHONE_SENSORS" -> LcarsYellow
+                else -> LcarsTan.copy(0.6f)
+            },
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             LcarsAnimatedValue(value = heartRate.toFloat(), label = "HEART RATE", unit = "BPM", color = LcarsRed, decimalPlaces = 0)
             LcarsAnimatedValue(value = bodyTemp, label = "BODY TEMP", unit = "°C", color = LcarsOrange)

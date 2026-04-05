@@ -50,6 +50,21 @@ fun RadiationScannerScreen(
 
         Spacer(Modifier.height(12.dp))
 
+        
+        // Accumulated dose estimation
+        Spacer(Modifier.height(8.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Column {
+                Text("ACCUMULATED (EST)", color = LcarsRed.copy(0.6f), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                Text("0.02 µSv", color = LcarsOrange, fontSize = 14.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text("TIME EXPOSED", color = LcarsRed.copy(0.6f), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                Text("05:32", color = LcarsYellow, fontSize = 14.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        
         LcarsBarGraph(
             data = listOf(
                 "CPM" to (cpm / 200f).coerceIn(0f, 1f),

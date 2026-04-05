@@ -37,14 +37,17 @@ fun AcousticScannerScreen(
     }
     
     // Generate FFT-style data from waveform for visualization
+    // Generate FFT-style data for visualization
     val fftData = remember(waveformData) {
-        if (waveformData.isEmpty()) {
+        if (waveformData.isEmpty() || waveformData.size < 2) {
             List(64) { 0f }
         } else {
-            val avgLevel = waveformData.average().toFloat()
+            val avgLevel = waveformData.map { kotlin.math.abs(it) }.average().toFloat().coerceIn(0f, 1f)
             List(64) { i ->
-                val base = avgLevel * (1f - i * 0.01f)
-                (base + (waveformData.getOrElse(i % waveformData.size) { 0f } * 0.3f)).coerceIn(0f, 1f)
+                val base = avgLevel * (1f - i * 0.008f)
+                val waveIdx = (i * waveformData.size / 64).coerceIn(0, waveformData.lastIndex)
+                val sample = kotlin.math.abs(waveformData[waveIdx])
+                (base + sample * 0.3f).coerceIn(0f, 1f)
             }
         }
     }
@@ -80,9 +83,9 @@ fun AcousticScannerScreen(
 
         LcarsBarGraph(
             data = listOf(
-                "LOW" to fftData.take(16).average().toFloat(),
-                "MID" to fftData.drop(16).take(24).average().toFloat(),
-                "HIGH" to fftData.drop(40).average().toFloat(),
+                "LOW" to (fftData.take(16).takeIf { it.isNotEmpty() }?.average()?.toFloat() ?: 0f),
+                "MID" to (fftData.drop(16).take(24).takeIf { it.isNotEmpty() }?.average()?.toFloat() ?: 0f),
+                "HIGH" to (fftData.drop(40).takeIf { it.isNotEmpty() }?.average()?.toFloat() ?: 0f),
                 "dB" to (dbLevel / 120f).coerceIn(0f, 1f)
             )
         )
@@ -91,6 +94,7 @@ fun AcousticScannerScreen(
 
 @Composable
 private fun OscilloscopeView(data: List<Float>, modifier: Modifier) {
+    val safeData = if (data.isEmpty()) List(50) { 0f } else data
     val infiniteTransition = rememberInfiniteTransition(label = "oscPhase")
     val phase by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -122,8 +126,8 @@ private fun OscilloscopeView(data: List<Float>, modifier: Modifier) {
         // Waveform path
         if (data.isNotEmpty()) {
             val path = Path()
-            val step = w / (data.size - 1).coerceAtLeast(1)
-            data.forEachIndexed { i, v ->
+            val step = w / (safeData.size - 1).coerceAtLeast(1)
+            safeData.forEachIndexed { i, v ->
                 val x = i * step
                 val sampleVal = v * sin(phase + i * 0.1f) // subtle animation
                 val y = midY - sampleVal * midY * 0.8f

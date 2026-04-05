@@ -563,7 +563,7 @@ private fun Holographic3DBody(
         }
         
         // Draw path with glow
-        fun draw3DPath(points: List<Point3D>, color: Color, strokeWidth: Float, closed: Boolean = false) {
+        fun draw3DPath(points: List<Point3D>, color: Color, strokeWidth: Float, closed: Boolean = false, smooth: Boolean = false) {
             if (points.size < 2) return
             val rotated = points.map { it.rotateY(rotationAngle) }
             val projected = rotated.map { it.project(cx, cy, scale) }
@@ -578,11 +578,13 @@ private fun Holographic3DBody(
                 if (closed) close()
             }
             
+            val effect = if (smooth) PathEffect.cornerPathEffect(24f) else null
+            
             // Glow
-            drawPath(path, color.copy(alpha = alpha * 0.2f), style = Stroke(strokeWidth * 4f, cap = StrokeCap.Round, join = StrokeJoin.Round))
-            drawPath(path, color.copy(alpha = alpha * 0.5f), style = Stroke(strokeWidth * 2f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+            drawPath(path, color.copy(alpha = alpha * 0.2f), style = Stroke(strokeWidth * 4f, cap = StrokeCap.Round, join = StrokeJoin.Round, pathEffect = effect))
+            drawPath(path, color.copy(alpha = alpha * 0.5f), style = Stroke(strokeWidth * 2f, cap = StrokeCap.Round, join = StrokeJoin.Round, pathEffect = effect))
             // Core
-            drawPath(path, color.copy(alpha = alpha), style = Stroke(strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round))
+            drawPath(path, color.copy(alpha = alpha), style = Stroke(strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round, pathEffect = effect))
         }
         
         // === SKELETON ===
@@ -664,50 +666,58 @@ private fun Holographic3DBody(
         // === BODY OUTLINE (semi-transparent silhouette) ===
         val bodyOutline = listOf(
             // Head top
-            Point3D(0f, -0.60f, 0f),
-            Point3D(-0.08f, -0.56f, 0.04f),
-            Point3D(-0.10f, -0.48f, 0.06f),
-            Point3D(-0.08f, -0.42f, 0.05f),
+            Point3D(0f, -0.62f, 0f),
+            Point3D(-0.06f, -0.61f, 0.03f),
+            Point3D(-0.09f, -0.56f, 0.05f),
+            Point3D(-0.09f, -0.48f, 0.06f),
+            Point3D(-0.07f, -0.42f, 0.04f),
             // Neck
-            Point3D(-0.05f, -0.38f, 0.03f),
+            Point3D(-0.04f, -0.38f, 0.03f),
             Point3D(-0.05f, -0.32f, 0.03f),
-            // Shoulder
-            Point3D(-0.20f, -0.30f, 0.06f),
-            Point3D(-0.22f, -0.28f, 0.05f),
-            // Arm
-            Point3D(-0.24f, -0.10f, 0.04f),
-            Point3D(-0.26f, 0.10f, 0.05f),
-            Point3D(-0.28f, 0.16f, 0.04f),
-            // Back up arm
-            Point3D(-0.24f, 0.10f, 0.03f),
-            Point3D(-0.22f, -0.08f, 0.02f),
-            // Side torso
-            Point3D(-0.18f, -0.10f, 0.08f),
-            Point3D(-0.16f, 0.10f, 0.10f),
-            Point3D(-0.14f, 0.28f, 0.08f),
-            // Hip
-            Point3D(-0.16f, 0.36f, 0.06f),
-            // Leg outer
-            Point3D(-0.14f, 0.60f, 0.05f),
-            Point3D(-0.12f, 0.88f, 0.05f),
-            Point3D(-0.14f, 0.94f, 0.04f),
+            // Shoulder/Trapezius
+            Point3D(-0.13f, -0.31f, 0.05f),
+            Point3D(-0.21f, -0.28f, 0.06f),
+            // Arm outer (Deltoid to Bicep to Forearm)
+            Point3D(-0.24f, -0.16f, 0.05f),
+            Point3D(-0.25f, -0.04f, 0.04f),
+            Point3D(-0.26f, 0.08f, 0.05f),
+            Point3D(-0.27f, 0.18f, 0.04f), // Hand outer
+            Point3D(-0.26f, 0.24f, 0.03f), // Fingers
+            Point3D(-0.23f, 0.24f, 0.02f),
+            Point3D(-0.22f, 0.18f, 0.03f), // Hand inner
+            // Arm inner
+            Point3D(-0.22f, 0.06f, 0.03f),
+            Point3D(-0.20f, -0.08f, 0.02f), // Armpit
+            // Torso (Chest to Waist to Hip)
+            Point3D(-0.17f, -0.05f, 0.08f),
+            Point3D(-0.14f, 0.12f, 0.09f),  // Waist
+            Point3D(-0.17f, 0.28f, 0.08f),  // Hip
+            // Leg outer (Thigh to Knee to Calf)
+            Point3D(-0.19f, 0.42f, 0.07f),
+            Point3D(-0.16f, 0.58f, 0.06f),
+            Point3D(-0.17f, 0.74f, 0.05f),  // Calf outer
+            Point3D(-0.13f, 0.88f, 0.05f),  // Ankle outer
             // Foot
-            Point3D(-0.06f, 0.96f, 0.06f),
-            // Inner leg
-            Point3D(-0.06f, 0.94f, 0.04f),
-            Point3D(-0.06f, 0.60f, 0.03f),
-            Point3D(-0.04f, 0.40f, 0.02f),
+            Point3D(-0.14f, 0.95f, 0.06f),  // Heel
+            Point3D(-0.11f, 0.98f, 0.08f),  // Toe outer
+            Point3D(-0.05f, 0.98f, 0.06f),  // Toe inner
+            Point3D(-0.06f, 0.93f, 0.04f),  // Ankle inner
+            // Leg inner (Calf to Knee to Thigh)
+            Point3D(-0.08f, 0.74f, 0.04f),
+            Point3D(-0.09f, 0.58f, 0.05f),
+            Point3D(-0.06f, 0.42f, 0.04f),
+            Point3D(-0.02f, 0.36f, 0.02f)   // Crotch
         )
         
         // Draw left side outline
-        draw3DPath(bodyOutline, skeletonColor.copy(alpha = 0.15f), 0.8f)
+        draw3DPath(bodyOutline, skeletonColor.copy(alpha = 0.25f), 1.2f, smooth = true)
         // Draw right side (mirrored)
         val rightOutline = bodyOutline.map { Point3D(-it.x, it.y, it.z) }
-        draw3DPath(rightOutline, skeletonColor.copy(alpha = 0.15f), 0.8f)
+        draw3DPath(rightOutline, skeletonColor.copy(alpha = 0.25f), 1.2f, smooth = true)
         
         // Center line connecting
-        draw3DLine(bodyOutline.last(), rightOutline.last(), skeletonColor.copy(alpha = 0.1f), 0.5f)
-        draw3DLine(bodyOutline[0], rightOutline[0], skeletonColor.copy(alpha = 0.1f), 0.5f)
+        draw3DLine(bodyOutline.last(), rightOutline.last(), skeletonColor.copy(alpha = 0.2f), 1.2f)
+        draw3DLine(bodyOutline[0], rightOutline[0], skeletonColor.copy(alpha = 0.2f), 1.2f)
         
         // Temperature indicator glow on body
         if (temperature > 37.5f) {

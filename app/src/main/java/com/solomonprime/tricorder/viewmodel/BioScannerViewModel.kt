@@ -3,6 +3,7 @@ package com.solomonprime.tricorder.viewmodel
 import android.annotation.SuppressLint
 import android.app.Application
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -25,10 +26,8 @@ import kotlin.random.Random
 
 class BioScannerViewModel(application: Application) : AndroidViewModel(application) {
 
-    // --- Root detection ---
     val isRooted: Boolean
 
-    // --- Sensor flows ---
     private val _heartRate = MutableStateFlow(0)
     val heartRate = _heartRate.asStateFlow()
 
@@ -44,24 +43,37 @@ class BioScannerViewModel(application: Application) : AndroidViewModel(applicati
     private val _movementLevel = MutableStateFlow(0f)
     val movementLevel = _movementLevel.asStateFlow()
 
-    // --- Data source ---
     private val _dataSource = MutableStateFlow("SIMULATED")
     val dataSource = _dataSource.asStateFlow()
 
-    // --- Bluetooth ---
     private val _connectedDeviceName = MutableStateFlow<String?>(null)
     val connectedDeviceName = _connectedDeviceName.asStateFlow()
 
     private val _pairedDevices = MutableStateFlow<List<String>>(emptyList())
     val pairedDevices = _pairedDevices.asStateFlow()
 
-    // --- Internal state ---
+    // New fields for enhanced BIO screen
+    private val _bloodPressureSystolic = MutableStateFlow(120)
+    val bloodPressureSystolic = _bloodPressureSystolic.asStateFlow()
+
+    private val _bloodPressureDiastolic = MutableStateFlow(80)
+    val bloodPressureDiastolic = _bloodPressureDiastolic.asStateFlow()
+
+    private val _steps = MutableStateFlow(0)
+    val steps = _steps.asStateFlow()
+
+    private val _caloriesBurned = MutableStateFlow(0f)
+    val caloriesBurned = _caloriesBurned.asStateFlow()
+
+    private val _sleepHours = MutableStateFlow(0f)
+    val sleepHours = _sleepHours.asStateFlow()
+
     private val sensorManager: SensorManager =
         application.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private var hasHardwareHeartRate = false
     private var hasBtDevice = false
     private var scanJob: Job? = null
-    private var simulationJob: Job? = null
+    private var stepSensorRegistered = false
 
     private val sensorListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
@@ -74,10 +86,12 @@ class BioScannerViewModel(application: Application) : AndroidViewModel(applicati
                     val x = event.values[0]
                     val y = event.values[1]
                     val z = event.values[2]
-                    // Normalize magnitude relative to gravity (~9.81)
                     val mag = sqrt(x * x + y * y + z * z)
                     val deviation = kotlin.math.abs(mag - 9.81f) / 9.81f
                     _movementLevel.value = deviation.coerceIn(0f, 1f)
+                }
+                Sensor.TYPE_STEP_COUNTER -> {
+                    _steps.value = event.values[0].toInt()
                 }
             }
         }
@@ -85,24 +99,41 @@ class BioScannerViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     init {
-        // Root detection
         isRooted = detectRoot()
-
-        // Check for BT fitness devices
         detectBluetoothDevices()
-
-        // Check hardware heart rate sensor
         hasHardwareHeartRate = sensorManager.getDefaultSensor(Sensor.TYPE_HEART_RATE) != null
-
-        // Determine data source
+        
         _dataSource.value = when {
-            hasBtDevice -> "BT_DEVICE"
+            hasBtDevice -> "WEARABLE"
             hasHardwareHeartRate -> "PHONE_SENSORS"
             else -> "SIMULATED"
         }
-
-        // Read battery temperature as skin temp proxy
+        
         readBatteryTemperature()
+        
+        // Try to detect Samsung Health or Google Fit
+        checkHealthPlatforms()
+    }
+
+    private fun checkHealthPlatforms() {
+        val ctx = getApplication<Application>()
+        val pm = ctx.packageManager
+        
+        // Check for Samsung Health
+        try {
+            pm.getPackageInfo("com.sec.android.app.shealth", 0)
+            if (_dataSource.value == "SIMULATED") {
+                _dataSource.value = "SAMSUNG_HEALTH"
+            }
+        } catch (_: Exception) {}
+        
+        // Check for Google Fit
+        try {
+            pm.getPackageInfo("com.google.android.apps.fitness", 0)
+            if (_dataSource.value == "SIMULATED") {
+                _dataSource.value = "GOOGLE_FIT"
+            }
+        } catch (_: Exception) {}
     }
 
     private fun detectRoot(): Boolean {
@@ -112,18 +143,23 @@ class BioScannerViewModel(application: Application) : AndroidViewModel(applicati
         try {
             if (Build.TAGS?.contains("test-keys") == true) return true
         } catch (_: Exception) {}
-        try {
-            // su exec skipped — blocks indefinitely on stock devices
-        } catch (_: Exception) {}
         return false
     }
 
     @SuppressLint("MissingPermission")
     private fun detectBluetoothDevices() {
         try {
-            val adapter = BluetoothAdapter.getDefaultAdapter() ?: return
+            val btManager = getApplication<Application>().getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+            val adapter = btManager?.adapter ?: BluetoothAdapter.getDefaultAdapter() ?: return
+            
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // Need BLUETOOTH_CONNECT permission
+                return
+            }
+            
+            @Suppress("DEPRECATION")
             val bonded = adapter.bondedDevices ?: return
-            val fitnessKeywords = listOf("polar", "garmin", "fitbit", "mi band", "band")
+            val fitnessKeywords = listOf("polar", "garmin", "fitbit", "mi band", "band", "watch", "galaxy", "sony", "smartwatch", "sw3", "huawei")
             val allPaired = bonded.mapNotNull { it.name }
             _pairedDevices.value = allPaired
 
@@ -135,8 +171,23 @@ class BioScannerViewModel(application: Application) : AndroidViewModel(applicati
                 _connectedDeviceName.value = matched
             }
         } catch (_: SecurityException) {
-            // Missing BLUETOOTH_CONNECT permission
         } catch (_: Exception) {}
+    }
+
+    fun scanForDevices() {
+        viewModelScope.launch {
+            detectBluetoothDevices()
+            checkHealthPlatforms()
+            
+            // Update data source based on new findings
+            _dataSource.value = when {
+                hasBtDevice -> "WEARABLE"
+                hasHardwareHeartRate -> "PHONE_SENSORS"
+                _dataSource.value == "SAMSUNG_HEALTH" -> "SAMSUNG_HEALTH"
+                _dataSource.value == "GOOGLE_FIT" -> "GOOGLE_FIT"
+                else -> "SIMULATED"
+            }
+        }
     }
 
     private fun readBatteryTemperature() {
@@ -153,15 +204,20 @@ class BioScannerViewModel(application: Application) : AndroidViewModel(applicati
     fun startScan() {
         if (scanJob?.isActive == true) return
 
+        // Register step counter
+        sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)?.let {
+            sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_NORMAL)
+            stepSensorRegistered = true
+        }
+
         when (_dataSource.value) {
             "PHONE_SENSORS" -> startLiveSensors()
-            "BT_DEVICE" -> startBtSimulation()
+            "WEARABLE", "SAMSUNG_HEALTH", "GOOGLE_FIT" -> startWearableSimulation()
             else -> startSimulation()
         }
     }
 
     private fun startLiveSensors() {
-        // Register hardware sensors
         sensorManager.getDefaultSensor(Sensor.TYPE_HEART_RATE)?.let {
             sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_NORMAL)
         }
@@ -169,39 +225,55 @@ class BioScannerViewModel(application: Application) : AndroidViewModel(applicati
             sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_NORMAL)
         }
 
-        // Periodic updates for derived values
         scanJob = viewModelScope.launch {
-            // Initialize heart rate if sensor hasn't fired yet
             if (_heartRate.value == 0) _heartRate.value = 72
             while (true) {
                 readBatteryTemperature()
-                // Derive stress from heart rate + movement
                 val hrFactor = ((_heartRate.value - 60f) / 40f).coerceIn(0f, 1f)
                 val mvFactor = _movementLevel.value
                 _stressIndex.value = ((hrFactor * 0.7f + mvFactor * 0.3f)).coerceIn(0f, 1f)
-                // Blood oxygen stays relatively stable
                 _bloodOxygen.value = (_bloodOxygen.value + Random.nextFloat() * 0.4f - 0.2f).coerceIn(95f, 99.9f)
+                
+                // Simulate activity data
+                _caloriesBurned.value = (_steps.value * 0.04f)
+                _sleepHours.value = 7.5f + Random.nextFloat() - 0.5f
+                
+                // Blood pressure varies slightly
+                _bloodPressureSystolic.value = (120 + Random.nextInt(-5, 6)).coerceIn(100, 140)
+                _bloodPressureDiastolic.value = (80 + Random.nextInt(-3, 4)).coerceIn(60, 90)
+                
                 delay(2000L)
             }
         }
     }
 
-    private fun startBtSimulation() {
-        // Simulate data as if reading from BT device
+    private fun startWearableSimulation() {
+        sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.let {
+            sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_NORMAL)
+        }
+        
         scanJob = viewModelScope.launch {
             _heartRate.value = 72
+            _steps.value = Random.nextInt(2000, 8000) // Simulate daily steps
+            _sleepHours.value = 6.5f + Random.nextFloat() * 2f
+            _caloriesBurned.value = _steps.value * 0.04f
+            
             while (true) {
                 _heartRate.value = (_heartRate.value + Random.nextInt(-2, 3)).coerceIn(55, 110)
                 _bloodOxygen.value = (_bloodOxygen.value + Random.nextFloat() * 0.4f - 0.2f).coerceIn(95f, 99.9f)
                 readBatteryTemperature()
                 _stressIndex.value = (_stressIndex.value + Random.nextFloat() * 0.08f - 0.04f).coerceIn(0f, 1f)
                 _movementLevel.value = (_movementLevel.value + Random.nextFloat() * 0.1f - 0.05f).coerceIn(0f, 1f)
+                
+                _bloodPressureSystolic.value = (118 + Random.nextInt(-8, 9)).coerceIn(100, 140)
+                _bloodPressureDiastolic.value = (78 + Random.nextInt(-5, 6)).coerceIn(60, 90)
+                
+                // Steps increment slowly
+                _steps.value = _steps.value + Random.nextInt(0, 5)
+                _caloriesBurned.value = _steps.value * 0.04f
+                
                 delay(2000L)
             }
-        }
-        // Also register accelerometer if available
-        sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.let {
-            sensorManager.registerListener(sensorListener, it, SensorManager.SENSOR_DELAY_NORMAL)
         }
     }
 
@@ -209,12 +281,23 @@ class BioScannerViewModel(application: Application) : AndroidViewModel(applicati
         scanJob = viewModelScope.launch {
             _heartRate.value = 72
             if (_skinTemp.value == 0f) _skinTemp.value = 36.6f
+            _steps.value = Random.nextInt(1000, 5000)
+            _sleepHours.value = 7f + Random.nextFloat()
+            _caloriesBurned.value = _steps.value * 0.04f
+            
             while (true) {
                 _heartRate.value = (_heartRate.value + Random.nextInt(-3, 4)).coerceIn(60, 100)
                 _bloodOxygen.value = (_bloodOxygen.value + Random.nextFloat() * 0.6f - 0.3f).coerceIn(95f, 99.9f)
                 _skinTemp.value = (_skinTemp.value + Random.nextFloat() * 0.2f - 0.1f).coerceIn(36f, 37.5f)
                 _stressIndex.value = (_stressIndex.value + Random.nextFloat() * 0.1f - 0.05f).coerceIn(0f, 1f)
                 _movementLevel.value = (_movementLevel.value + Random.nextFloat() * 0.1f - 0.05f).coerceIn(0f, 1f)
+                
+                _bloodPressureSystolic.value = (120 + Random.nextInt(-10, 11)).coerceIn(100, 140)
+                _bloodPressureDiastolic.value = (80 + Random.nextInt(-6, 7)).coerceIn(60, 90)
+                
+                _steps.value = _steps.value + Random.nextInt(0, 3)
+                _caloriesBurned.value = _steps.value * 0.04f
+                
                 delay(2000L)
             }
         }

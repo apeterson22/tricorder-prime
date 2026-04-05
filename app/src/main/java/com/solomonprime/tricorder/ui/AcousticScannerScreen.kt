@@ -5,6 +5,11 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -15,15 +20,50 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.ViewModelProvider
+import android.app.Application
 import com.solomonprime.tricorder.ui.theme.*
 import com.solomonprime.tricorder.viewmodel.AcousticViewModel
 import kotlin.math.sin
 
 @Composable
-fun AcousticScannerScreen(
-    viewModel: AcousticViewModel = viewModel()
-) {
+fun AcousticScannerScreen() {
+    val context = LocalContext.current
+    val viewModel: AcousticViewModel = viewModel(
+        factory = object : ViewModelProvider.Factory {
+            override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+                @Suppress("UNCHECKED_CAST")
+                return AcousticViewModel(
+                    context.applicationContext as Application
+                ) as T
+            }
+        }
+    )
+    var hasPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED
+        )
+    }
+    
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasPermission = granted
+        if (granted) {
+            viewModel.startRecording()
+        }
+    }
+    
+    // Request permission on first composition if not granted
+    LaunchedEffect(Unit) {
+        if (!hasPermission) {
+            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+    
     // Collect real-time state from ViewModel
     val waveformData by viewModel.waveform.collectAsState()
     val dbLevel by viewModel.decibels.collectAsState()
@@ -31,8 +71,10 @@ fun AcousticScannerScreen(
     val freqBand by viewModel.freqBand.collectAsState()
     
     // Start/stop recording based on lifecycle
-    DisposableEffect(Unit) {
-        viewModel.startRecording()
+    DisposableEffect(hasPermission) {
+        if (hasPermission) {
+            viewModel.startRecording()
+        }
         onDispose { viewModel.stopRecording() }
     }
     

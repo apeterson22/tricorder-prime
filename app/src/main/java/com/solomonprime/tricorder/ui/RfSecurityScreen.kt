@@ -21,6 +21,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import android.content.Intent
+import android.net.wifi.WifiNetworkSpecifier
+import android.net.NetworkRequest
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.os.Build
+import android.provider.Settings
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 import com.solomonprime.tricorder.ui.theme.*
 import com.solomonprime.tricorder.viewmodel.*
 
@@ -421,20 +430,46 @@ private fun WifiNetworkRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                val context = LocalContext.current
                 NetworkActionButton(
                     text = "CONNECT",
                     color = LcarsBlue,
-                    onClick = { /* TODO: Connect to network */ }
+                    onClick = {
+                        // Open WiFi settings to connect
+                        try {
+                            val intent = Intent(Settings.ACTION_WIFI_SETTINGS)
+                            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                            context.startActivity(intent)
+                            Toast.makeText(context, "Select '${net.ssid}' to connect", Toast.LENGTH_LONG).show()
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Cannot open WiFi settings", Toast.LENGTH_SHORT).show()
+                        }
+                    }
                 )
                 NetworkActionButton(
                     text = "DETAILS",
                     color = LcarsTan,
-                    onClick = { /* TODO: Show details dialog */ }
+                    onClick = {
+                        Toast.makeText(
+                            context,
+                            "SSID: ${net.ssid}\nBSSID: ${net.bssid}\nChannel: ${((net.frequency - 2412) / 5 + 1)}\nSecurity: ${net.capabilities}\nRSSI: ${net.rssi} dBm",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
                 )
                 NetworkActionButton(
                     text = "SHARE",
                     color = LcarsPurple,
-                    onClick = { /* TODO: Generate QR code */ }
+                    onClick = {
+                        // Create WiFi QR code content
+                        val security = if (net.capabilities.contains("WPA")) "WPA" else if (net.capabilities.contains("WEP")) "WEP" else "nopass"
+                        val wifiQr = "WIFI:T=$security;S=${net.ssid};P=;;H=false;;"
+                        // Copy to clipboard for now
+                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        val clip = android.content.ClipData.newPlainText("WiFi QR", wifiQr)
+                        clipboard.setPrimaryClip(clip)
+                        Toast.makeText(context, "WiFi QR data copied to clipboard", Toast.LENGTH_SHORT).show()
+                    }
                 )
             }
         }

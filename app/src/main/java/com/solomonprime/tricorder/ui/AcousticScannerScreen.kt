@@ -53,6 +53,20 @@ fun AcousticScannerScreen(
     }
 
     LcarsScreenScaffold(title = "ACO SCANNER", headerColor = LcarsPurple) {
+        
+        // Permission hint - show if waveform looks simulated (no real variation)
+        val isSimulated = remember(waveformData) {
+            waveformData.isEmpty() || waveformData.all { kotlin.math.abs(it) < 0.5f }
+        }
+        if (isSimulated) {
+            Text(
+                text = "⚠️ MICROPHONE ACCESS REQUIRED FOR LIVE DATA",
+                color = LcarsOrange.copy(0.8f),
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+        }
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             LcarsAnimatedValue(value = dbLevel, label = "LEVEL", unit = "dB", color = LcarsPurple)

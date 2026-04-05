@@ -24,13 +24,10 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.graphics.drawscope.scale
-import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -41,8 +38,215 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.solomonprime.tricorder.ui.theme.*
 import com.solomonprime.tricorder.viewmodel.BioScannerViewModel
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
+
+// 3D Point class for rotation
+data class Point3D(val x: Float, val y: Float, val z: Float) {
+    fun rotateY(angle: Float): Point3D {
+        val cos = cos(angle)
+        val sin = sin(angle)
+        return Point3D(
+            x * cos + z * sin,
+            y,
+            -x * sin + z * cos
+        )
+    }
+    
+    fun project(cx: Float, cy: Float, scale: Float, perspective: Float = 400f): Offset {
+        val factor = perspective / (perspective + z)
+        return Offset(cx + x * scale * factor, cy + y * scale * factor)
+    }
+    
+    fun depth(): Float = z
+}
+
+// Define body skeleton points
+object BodySkeleton {
+    // Spine points (from top to bottom)
+    val spine = listOf(
+        Point3D(0f, -0.42f, 0f),   // C1 - top of neck
+        Point3D(0f, -0.38f, 0.01f),
+        Point3D(0f, -0.34f, 0.02f),
+        Point3D(0f, -0.30f, 0.02f), // C7
+        Point3D(0f, -0.26f, 0.02f), // T1
+        Point3D(0f, -0.20f, 0.02f),
+        Point3D(0f, -0.14f, 0.02f),
+        Point3D(0f, -0.08f, 0.01f),
+        Point3D(0f, -0.02f, 0f),
+        Point3D(0f, 0.04f, -0.01f),
+        Point3D(0f, 0.10f, -0.02f),
+        Point3D(0f, 0.16f, -0.02f), // L1
+        Point3D(0f, 0.22f, -0.01f),
+        Point3D(0f, 0.28f, 0f),     // L5
+        Point3D(0f, 0.32f, 0.01f),  // Sacrum
+    )
+    
+    // Skull
+    fun skull(rotation: Float): List<Point3D> {
+        val points = mutableListOf<Point3D>()
+        for (i in 0..16) {
+            val angle = i * PI.toFloat() * 2f / 16f
+            val rx = 0.09f
+            val ry = 0.11f
+            val rz = 0.08f
+            points.add(Point3D(
+                rx * cos(angle),
+                -0.52f + ry * sin(angle) * 0.3f,
+                rz * sin(angle)
+            ))
+        }
+        return points
+    }
+    
+    // Ribcage (12 pairs)
+    fun ribs(): List<List<Point3D>> {
+        val ribs = mutableListOf<List<Point3D>>()
+        for (i in 0..11) {
+            val y = -0.26f + i * 0.032f
+            val width = 0.18f - i * 0.006f
+            val depth = 0.10f - i * 0.004f
+            val leftRib = mutableListOf<Point3D>()
+            val rightRib = mutableListOf<Point3D>()
+            
+            for (j in 0..8) {
+                val angle = j * PI.toFloat() / 16f
+                leftRib.add(Point3D(-width * sin(angle), y + 0.02f * sin(angle * 2), depth * cos(angle)))
+                rightRib.add(Point3D(width * sin(angle), y + 0.02f * sin(angle * 2), depth * cos(angle)))
+            }
+            ribs.add(leftRib)
+            ribs.add(rightRib)
+        }
+        return ribs
+    }
+    
+    // Pelvis
+    fun pelvis(): List<Point3D> {
+        val points = mutableListOf<Point3D>()
+        for (i in 0..12) {
+            val angle = -PI.toFloat() / 2f + i * PI.toFloat() / 12f
+            points.add(Point3D(
+                0.16f * cos(angle),
+                0.34f + 0.06f * sin(angle),
+                0.06f * cos(angle * 0.5f)
+            ))
+        }
+        return points
+    }
+    
+    // Arm bones
+    fun leftArm(): List<Pair<Point3D, Point3D>> = listOf(
+        // Clavicle
+        Point3D(0f, -0.30f, 0.02f) to Point3D(-0.14f, -0.28f, 0.04f),
+        // Humerus
+        Point3D(-0.14f, -0.28f, 0.04f) to Point3D(-0.18f, -0.08f, 0.02f),
+        // Radius
+        Point3D(-0.18f, -0.08f, 0.02f) to Point3D(-0.22f, 0.12f, 0.04f),
+        // Ulna
+        Point3D(-0.18f, -0.08f, 0.02f) to Point3D(-0.20f, 0.12f, 0.02f),
+    )
+    
+    fun rightArm(): List<Pair<Point3D, Point3D>> = listOf(
+        Point3D(0f, -0.30f, 0.02f) to Point3D(0.14f, -0.28f, 0.04f),
+        Point3D(0.14f, -0.28f, 0.04f) to Point3D(0.18f, -0.08f, 0.02f),
+        Point3D(0.18f, -0.08f, 0.02f) to Point3D(0.22f, 0.12f, 0.04f),
+        Point3D(0.18f, -0.08f, 0.02f) to Point3D(0.20f, 0.12f, 0.02f),
+    )
+    
+    // Leg bones
+    fun leftLeg(): List<Pair<Point3D, Point3D>> = listOf(
+        // Femur
+        Point3D(-0.10f, 0.36f, 0f) to Point3D(-0.10f, 0.62f, 0.02f),
+        // Tibia
+        Point3D(-0.10f, 0.64f, 0.02f) to Point3D(-0.10f, 0.90f, 0.04f),
+        // Fibula
+        Point3D(-0.10f, 0.64f, 0.02f) to Point3D(-0.12f, 0.90f, 0.03f),
+    )
+    
+    fun rightLeg(): List<Pair<Point3D, Point3D>> = listOf(
+        Point3D(0.10f, 0.36f, 0f) to Point3D(0.10f, 0.62f, 0.02f),
+        Point3D(0.10f, 0.64f, 0.02f) to Point3D(0.10f, 0.90f, 0.04f),
+        Point3D(0.10f, 0.64f, 0.02f) to Point3D(0.12f, 0.90f, 0.03f),
+    )
+    
+    // Heart outline
+    fun heart(scale: Float): List<Point3D> {
+        val points = mutableListOf<Point3D>()
+        val cx = -0.04f
+        val cy = -0.16f
+        val cz = 0.06f
+        val s = 0.04f * scale
+        
+        for (i in 0..20) {
+            val t = i * PI.toFloat() * 2f / 20f
+            val x = s * 1.2f * (16f * sin(t).let { it * it * it }) / 16f
+            val y = s * (13f * cos(t) - 5f * cos(2 * t) - 2f * cos(3 * t) - cos(4 * t)) / 16f
+            points.add(Point3D(cx + x, cy - y * 0.8f, cz + abs(x) * 0.3f))
+        }
+        return points
+    }
+    
+    // Lungs outline
+    fun leftLung(expand: Float): List<Point3D> {
+        val points = mutableListOf<Point3D>()
+        val cx = -0.10f
+        val cy = -0.14f
+        val w = 0.06f * expand
+        val h = 0.14f * expand
+        
+        for (i in 0..12) {
+            val t = i * PI.toFloat() * 2f / 12f
+            val x = w * cos(t) * (1f - 0.3f * sin(t))
+            val y = h * sin(t)
+            val z = 0.04f * cos(t)
+            points.add(Point3D(cx + x, cy + y, z))
+        }
+        return points
+    }
+    
+    fun rightLung(expand: Float): List<Point3D> {
+        val points = mutableListOf<Point3D>()
+        val cx = 0.08f
+        val cy = -0.14f
+        val w = 0.07f * expand
+        val h = 0.15f * expand
+        
+        for (i in 0..12) {
+            val t = i * PI.toFloat() * 2f / 12f
+            val x = w * cos(t) * (1f - 0.3f * sin(t))
+            val y = h * sin(t)
+            val z = 0.04f * cos(t)
+            points.add(Point3D(cx + x, cy + y, z))
+        }
+        return points
+    }
+    
+    // Major blood vessels
+    fun arteries(): List<List<Point3D>> = listOf(
+        // Aorta
+        listOf(
+            Point3D(-0.02f, -0.18f, 0.06f),
+            Point3D(-0.02f, -0.22f, 0.07f),
+            Point3D(0.02f, -0.26f, 0.06f),
+            Point3D(0.02f, -0.10f, 0.05f),
+            Point3D(0.01f, 0.10f, 0.04f),
+            Point3D(0f, 0.30f, 0.02f),
+        ),
+        // Carotid left
+        listOf(
+            Point3D(-0.02f, -0.26f, 0.05f),
+            Point3D(-0.03f, -0.34f, 0.04f),
+            Point3D(-0.03f, -0.42f, 0.03f),
+        ),
+        // Carotid right
+        listOf(
+            Point3D(0.02f, -0.26f, 0.05f),
+            Point3D(0.03f, -0.34f, 0.04f),
+            Point3D(0.03f, -0.42f, 0.03f),
+        ),
+    )
+}
 
 @Composable
 fun BioScannerScreen(
@@ -97,17 +301,6 @@ fun BioScannerScreen(
     
     val respiratoryRate = (heartRate / 4f).coerceIn(12f, 24f)
     val hrv = (50 + (100 - heartRate) * 0.8f).coerceIn(20f, 100f)
-    
-    val infiniteTransition = rememberInfiniteTransition(label = "bodyScan")
-    val scanLine by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            tween(3000, easing = LinearEasing),
-            RepeatMode.Restart
-        ),
-        label = "scanLine"
-    )
 
     LcarsScreenScaffold(title = "BIO SCANNER", headerColor = LcarsRed) {
         
@@ -125,11 +318,11 @@ fun BioScannerScreen(
             Spacer(Modifier.height(8.dp))
             
             Row(
-                modifier = Modifier.fillMaxWidth().height(360.dp),
+                modifier = Modifier.fillMaxWidth().height(380.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column(
-                    modifier = Modifier.weight(0.28f),
+                    modifier = Modifier.weight(0.26f),
                     verticalArrangement = Arrangement.SpaceEvenly
                 ) {
                     VitalIndicator("HEART", heartRate.toString(), "BPM", LcarsRed, heartRate > 100 || heartRate < 50)
@@ -140,12 +333,11 @@ fun BioScannerScreen(
                 
                 Box(
                     modifier = Modifier
-                        .weight(0.44f)
+                        .weight(0.48f)
                         .fillMaxHeight()
                         .padding(4.dp)
                 ) {
-                    AnatomicalBodyScan(
-                        scanProgress = scanLine,
+                    Holographic3DBody(
                         heartRate = heartRate,
                         temperature = bodyTemp,
                         stressLevel = stressIndex,
@@ -155,7 +347,7 @@ fun BioScannerScreen(
                 }
                 
                 Column(
-                    modifier = Modifier.weight(0.28f),
+                    modifier = Modifier.weight(0.26f),
                     verticalArrangement = Arrangement.SpaceEvenly
                 ) {
                     VitalIndicator("STRESS", String.format("%.0f", stressIndex * 100), "%", getStressColor(stressIndex), stressIndex > 0.7f)
@@ -207,45 +399,97 @@ fun BioScannerScreen(
 }
 
 @Composable
-private fun AnatomicalBodyScan(
-    scanProgress: Float,
+private fun Holographic3DBody(
     heartRate: Int,
     temperature: Float,
     stressLevel: Float,
     respiratoryRate: Float,
     modifier: Modifier
 ) {
-    val heartPulse = rememberInfiniteTransition(label = "heartPulse")
-    val heartScale by heartPulse.animateFloat(
+    // Rotation animation - slow continuous rotation
+    val infiniteTransition = rememberInfiniteTransition(label = "rotation")
+    val rotationAngle by infiniteTransition.animateFloat(
+        initialValue = -0.4f,
+        targetValue = 0.4f,
+        animationSpec = infiniteRepeatable(
+            tween(8000, easing = FastOutSlowInEasing),
+            RepeatMode.Reverse
+        ),
+        label = "bodyRotation"
+    )
+    
+    // Heart pulse
+    val heartScale by infiniteTransition.animateFloat(
         initialValue = 1f,
-        targetValue = 1.12f,
+        targetValue = 1.25f,
         animationSpec = infiniteRepeatable(
             tween((60000 / heartRate.coerceAtLeast(40)).toInt(), easing = FastOutSlowInEasing),
             RepeatMode.Reverse
         ),
-        label = "heartScale"
+        label = "heartPulse"
     )
     
-    val breathCycle by heartPulse.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
+    // Breathing
+    val breathExpand by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.15f,
         animationSpec = infiniteRepeatable(
             tween((60000 / respiratoryRate.coerceAtLeast(8f)).toInt(), easing = FastOutSlowInEasing),
             RepeatMode.Reverse
         ),
-        label = "breath"
+        label = "breathing"
     )
+    
+    // Scan line
+    val scanProgress by infiniteTransition.animateFloat(
+        initialValue = -0.6f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            tween(3000, easing = LinearEasing),
+            RepeatMode.Restart
+        ),
+        label = "scanLine"
+    )
+    
+    // Glow pulse
+    val glowPulse by infiniteTransition.animateFloat(
+        initialValue = 0.6f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            tween(2000, easing = FastOutSlowInEasing),
+            RepeatMode.Reverse
+        ),
+        label = "glow"
+    )
+    
+    val skeletonColor = Color(0xFF00DDFF)
+    val skeletonGlow = Color(0xFF00AAFF)
+    val heartColor = Color(0xFFFF4466)
+    val lungColor = Color(0xFF44AAFF)
+    val arteryColor = Color(0xFFFF3344)
+    val organGlow = Color(0xFF00FF88)
     
     Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
         val cx = w / 2f
+        val cy = h * 0.48f
+        val scale = h * 0.42f
         
-        // Background with grid
-        drawRect(Color(0xFF0A0A12))
+        // Dark background with radial gradient
+        drawRect(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    Color(0xFF0A1520),
+                    Color(0xFF050A10)
+                ),
+                center = Offset(cx, cy),
+                radius = h * 0.6f
+            )
+        )
         
-        // Subtle grid
-        val gridColor = LcarsBlue.copy(alpha = 0.05f)
+        // Grid lines
+        val gridColor = skeletonColor.copy(alpha = 0.05f)
         for (i in 0..20) {
             val y = h * i / 20f
             drawLine(gridColor, Offset(0f, y), Offset(w, y), 0.5f)
@@ -255,427 +499,242 @@ private fun AnatomicalBodyScan(
             drawLine(gridColor, Offset(x, 0f), Offset(x, h), 0.5f)
         }
         
-        // Scanning beam
-        val scanY = h * scanProgress
-        val beamGradient = Brush.verticalGradient(
-            colors = listOf(
-                Color.Transparent,
-                LcarsBlue.copy(alpha = 0.1f),
-                LcarsBlue.copy(alpha = 0.4f),
-                LcarsBlue.copy(alpha = 0.1f),
-                Color.Transparent
-            ),
-            startY = scanY - 40f,
-            endY = scanY + 40f
-        )
-        drawRect(beamGradient)
-        drawLine(
-            brush = Brush.horizontalGradient(
-                colors = listOf(Color.Transparent, LcarsBlue, LcarsBlue, Color.Transparent)
-            ),
-            start = Offset(0f, scanY),
-            end = Offset(w, scanY),
-            strokeWidth = 2f
-        )
-        
-        // Body temperature-based color
-        val skinTone = when {
-            temperature > 38.5f -> Color(0xFFFF6B6B) // Fever - reddish
-            temperature > 37.5f -> Color(0xFFFFAA85) // Elevated - warm
-            temperature < 35.5f -> Color(0xFF85B0FF) // Hypothermia - bluish
-            else -> Color(0xFFE8C4A8) // Normal skin tone
-        }
-        val skinHighlight = skinTone.copy(alpha = 0.7f)
-        val skinShadow = skinTone.copy(alpha = 0.3f)
-        val organColor = LcarsBlue.copy(alpha = 0.5f)
-        
-        // === HEAD ===
-        val headCenterY = h * 0.08f
-        val headRadiusX = w * 0.10f
-        val headRadiusY = w * 0.12f
-        
-        // Skull shape (oval)
-        drawOval(
-            color = skinShadow,
-            topLeft = Offset(cx - headRadiusX, headCenterY - headRadiusY),
-            size = Size(headRadiusX * 2, headRadiusY * 2)
-        )
-        drawOval(
-            color = skinTone,
-            topLeft = Offset(cx - headRadiusX + 2, headCenterY - headRadiusY + 2),
-            size = Size(headRadiusX * 2 - 4, headRadiusY * 2 - 4),
-            style = Stroke(2f)
-        )
-        
-        // Brain (visible through scan effect)
-        if (scanProgress > 0.02f && scanProgress < 0.15f) {
-            val brainColor = if (stressLevel > 0.6f) LcarsYellow.copy(0.6f) else LcarsBlue.copy(0.4f)
-            // Brain hemispheres
-            drawOval(
-                color = brainColor,
-                topLeft = Offset(cx - headRadiusX * 0.7f, headCenterY - headRadiusY * 0.6f),
-                size = Size(headRadiusX * 0.65f, headRadiusY * 0.8f)
-            )
-            drawOval(
-                color = brainColor,
-                topLeft = Offset(cx + headRadiusX * 0.05f, headCenterY - headRadiusY * 0.6f),
-                size = Size(headRadiusX * 0.65f, headRadiusY * 0.8f)
-            )
-            // Brain stem
-            drawOval(
-                color = brainColor.copy(alpha = 0.5f),
-                topLeft = Offset(cx - w * 0.02f, headCenterY + headRadiusY * 0.3f),
-                size = Size(w * 0.04f, headRadiusY * 0.4f)
-            )
-        }
-        
-        // === NECK ===
-        val neckTop = headCenterY + headRadiusY
-        val neckBottom = h * 0.17f
-        val neckWidth = w * 0.06f
-        drawRect(
-            color = skinShadow,
-            topLeft = Offset(cx - neckWidth, neckTop),
-            size = Size(neckWidth * 2, neckBottom - neckTop)
-        )
-        // Spine in neck
-        drawLine(LcarsBlue.copy(0.3f), Offset(cx, neckTop), Offset(cx, neckBottom), 2f)
-        
-        // === TORSO ===
-        val shoulderY = neckBottom
-        val shoulderWidth = w * 0.28f
-        val chestBottom = h * 0.42f
-        val waistY = h * 0.48f
-        val waistWidth = w * 0.18f
-        val hipY = h * 0.55f
-        val hipWidth = w * 0.22f
-        
-        // Torso path - realistic body shape
-        val torsoPath = Path().apply {
-            // Start at left shoulder
-            moveTo(cx - shoulderWidth, shoulderY)
-            // Shoulder curve
-            cubicTo(
-                cx - shoulderWidth - w * 0.02f, shoulderY + h * 0.02f,
-                cx - shoulderWidth - w * 0.01f, shoulderY + h * 0.05f,
-                cx - shoulderWidth + w * 0.02f, shoulderY + h * 0.08f
-            )
-            // Left side of chest
-            lineTo(cx - shoulderWidth + w * 0.04f, chestBottom)
-            // Waist curve
-            cubicTo(
-                cx - waistWidth - w * 0.02f, chestBottom + h * 0.02f,
-                cx - waistWidth, waistY,
-                cx - waistWidth, waistY
-            )
-            // Hip curve
-            cubicTo(
-                cx - waistWidth - w * 0.01f, waistY + h * 0.02f,
-                cx - hipWidth, hipY - h * 0.02f,
-                cx - hipWidth, hipY
-            )
-            // Bottom center
-            lineTo(cx - w * 0.08f, hipY + h * 0.02f)
-            lineTo(cx + w * 0.08f, hipY + h * 0.02f)
-            // Right hip
-            lineTo(cx + hipWidth, hipY)
-            // Right waist
-            cubicTo(
-                cx + hipWidth, hipY - h * 0.02f,
-                cx + waistWidth + w * 0.01f, waistY + h * 0.02f,
-                cx + waistWidth, waistY
-            )
-            // Right chest
-            cubicTo(
-                cx + waistWidth, waistY,
-                cx + waistWidth + w * 0.02f, chestBottom + h * 0.02f,
-                cx + shoulderWidth - w * 0.04f, chestBottom
-            )
-            // Right shoulder
-            lineTo(cx + shoulderWidth - w * 0.02f, shoulderY + h * 0.08f)
-            cubicTo(
-                cx + shoulderWidth + w * 0.01f, shoulderY + h * 0.05f,
-                cx + shoulderWidth + w * 0.02f, shoulderY + h * 0.02f,
-                cx + shoulderWidth, shoulderY
-            )
-            // Top of shoulders
-            lineTo(cx + neckWidth, shoulderY)
-            lineTo(cx - neckWidth, shoulderY)
-            close()
-        }
-        
-        // Draw torso fill and outline
-        drawPath(torsoPath, skinShadow)
-        drawPath(torsoPath, skinTone, style = Stroke(2f, cap = StrokeCap.Round, join = StrokeJoin.Round))
-        
-        // === RIBCAGE ===
-        val ribColor = LcarsBlue.copy(alpha = 0.25f)
-        for (i in 0..6) {
-            val ribY = shoulderY + h * 0.06f + i * h * 0.035f
-            val ribWidth = (shoulderWidth - w * 0.04f) * (1f - i * 0.08f)
-            // Left rib
-            drawArc(
-                color = ribColor,
-                startAngle = 0f,
-                sweepAngle = 80f,
-                useCenter = false,
-                topLeft = Offset(cx - ribWidth, ribY - h * 0.015f),
-                size = Size(ribWidth, h * 0.03f),
-                style = Stroke(1.5f)
-            )
-            // Right rib
-            drawArc(
-                color = ribColor,
-                startAngle = 100f,
-                sweepAngle = 80f,
-                useCenter = false,
-                topLeft = Offset(cx, ribY - h * 0.015f),
-                size = Size(ribWidth, h * 0.03f),
-                style = Stroke(1.5f)
-            )
-        }
-        
-        // === HEART ===
-        val heartX = cx - w * 0.06f
-        val heartY = h * 0.28f
-        val heartSize = w * 0.08f * heartScale
-        
-        // Heart shape path
-        val heartPath = Path().apply {
-            val hx = heartX
-            val hy = heartY
-            val hs = heartSize
-            moveTo(hx, hy + hs * 0.3f)
-            // Left curve
-            cubicTo(hx - hs * 0.5f, hy, hx - hs * 0.5f, hy - hs * 0.4f, hx, hy - hs * 0.2f)
-            // Right curve
-            cubicTo(hx + hs * 0.5f, hy - hs * 0.4f, hx + hs * 0.5f, hy, hx, hy + hs * 0.3f)
-        }
-        
-        // Heart glow
-        drawPath(heartPath, LcarsRed.copy(alpha = 0.3f * heartScale), style = Stroke(8f))
-        drawPath(heartPath, LcarsRed.copy(alpha = 0.6f))
-        drawPath(heartPath, LcarsRed, style = Stroke(2f))
-        
-        // === LUNGS ===
-        val lungExpand = 1f + breathCycle * 0.08f
-        val lungY = h * 0.26f
-        val lungWidth = w * 0.10f * lungExpand
-        val lungHeight = h * 0.12f * lungExpand
-        
-        // Left lung
-        val leftLungPath = Path().apply {
-            moveTo(cx - w * 0.04f, lungY)
-            cubicTo(
-                cx - w * 0.08f, lungY - lungHeight * 0.2f,
-                cx - lungWidth - w * 0.02f, lungY,
-                cx - lungWidth, lungY + lungHeight * 0.4f
-            )
-            cubicTo(
-                cx - lungWidth - w * 0.01f, lungY + lungHeight,
-                cx - w * 0.06f, lungY + lungHeight,
-                cx - w * 0.04f, lungY + lungHeight * 0.8f
-            )
-            close()
-        }
-        drawPath(leftLungPath, LcarsBlue.copy(alpha = 0.25f + breathCycle * 0.1f))
-        drawPath(leftLungPath, LcarsBlue.copy(alpha = 0.5f), style = Stroke(1.5f))
-        
-        // Right lung (larger)
-        val rightLungPath = Path().apply {
-            moveTo(cx + w * 0.02f, lungY)
-            cubicTo(
-                cx + w * 0.06f, lungY - lungHeight * 0.2f,
-                cx + lungWidth + w * 0.03f, lungY,
-                cx + lungWidth + w * 0.02f, lungY + lungHeight * 0.4f
-            )
-            cubicTo(
-                cx + lungWidth + w * 0.03f, lungY + lungHeight,
-                cx + w * 0.05f, lungY + lungHeight,
-                cx + w * 0.02f, lungY + lungHeight * 0.8f
-            )
-            close()
-        }
-        drawPath(rightLungPath, LcarsBlue.copy(alpha = 0.25f + breathCycle * 0.1f))
-        drawPath(rightLungPath, LcarsBlue.copy(alpha = 0.5f), style = Stroke(1.5f))
-        
-        // === STOMACH ===
-        val stomachY = h * 0.40f
-        drawOval(
-            color = LcarsOrange.copy(alpha = 0.25f),
-            topLeft = Offset(cx - w * 0.06f, stomachY),
-            size = Size(w * 0.10f, h * 0.06f)
-        )
-        drawOval(
-            color = LcarsOrange.copy(alpha = 0.4f),
-            topLeft = Offset(cx - w * 0.06f, stomachY),
-            size = Size(w * 0.10f, h * 0.06f),
-            style = Stroke(1f)
-        )
-        
-        // === LIVER ===
-        val liverPath = Path().apply {
-            moveTo(cx + w * 0.02f, h * 0.38f)
-            cubicTo(cx + w * 0.12f, h * 0.36f, cx + w * 0.15f, h * 0.42f, cx + w * 0.10f, h * 0.46f)
-            cubicTo(cx + w * 0.06f, h * 0.48f, cx, h * 0.46f, cx + w * 0.02f, h * 0.38f)
-        }
-        drawPath(liverPath, LcarsTan.copy(alpha = 0.35f))
-        drawPath(liverPath, LcarsTan.copy(alpha = 0.5f), style = Stroke(1f))
-        
-        // === KIDNEYS ===
-        // Left kidney
-        drawOval(
-            color = LcarsPurple.copy(alpha = 0.3f),
-            topLeft = Offset(cx - w * 0.14f, h * 0.42f),
-            size = Size(w * 0.05f, h * 0.06f)
-        )
-        // Right kidney
-        drawOval(
-            color = LcarsPurple.copy(alpha = 0.3f),
-            topLeft = Offset(cx + w * 0.09f, h * 0.42f),
-            size = Size(w * 0.05f, h * 0.06f)
-        )
-        
-        // === INTESTINES (simplified) ===
-        val intestineColor = LcarsTan.copy(alpha = 0.2f)
-        for (i in 0..3) {
-            val iy = h * 0.48f + i * h * 0.015f
+        // Horizontal scan line
+        val scanY = cy + scanProgress * scale
+        if (scanY > 0 && scanY < h) {
             drawLine(
-                intestineColor,
-                Offset(cx - w * 0.10f + i * w * 0.01f, iy),
-                Offset(cx + w * 0.10f - i * w * 0.01f, iy),
-                strokeWidth = 3f,
+                brush = Brush.horizontalGradient(
+                    colors = listOf(
+                        Color.Transparent,
+                        skeletonColor.copy(alpha = 0.8f),
+                        skeletonColor,
+                        skeletonColor.copy(alpha = 0.8f),
+                        Color.Transparent
+                    )
+                ),
+                start = Offset(cx - w * 0.4f, scanY),
+                end = Offset(cx + w * 0.4f, scanY),
+                strokeWidth = 2f
+            )
+            // Scan glow
+            drawRect(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color.Transparent,
+                        skeletonColor.copy(alpha = 0.15f),
+                        skeletonColor.copy(alpha = 0.05f),
+                        Color.Transparent
+                    ),
+                    startY = scanY - 30f,
+                    endY = scanY + 80f
+                ),
+                topLeft = Offset(0f, scanY - 30f),
+                size = Size(w, 110f)
+            )
+        }
+        
+        val baseAlpha = 0.4f + glowPulse * 0.3f
+        
+        // Helper to draw a 3D line with glow
+        fun draw3DLine(p1: Point3D, p2: Point3D, color: Color, strokeWidth: Float, glowWidth: Float = strokeWidth * 3f) {
+            val rp1 = p1.rotateY(rotationAngle)
+            val rp2 = p2.rotateY(rotationAngle)
+            val proj1 = rp1.project(cx, cy, scale)
+            val proj2 = rp2.project(cx, cy, scale)
+            val depth = (rp1.depth() + rp2.depth()) / 2f
+            val alpha = (baseAlpha - depth * 0.5f).coerceIn(0.2f, 1f)
+            
+            // Glow
+            drawLine(
+                color = color.copy(alpha = alpha * 0.3f),
+                start = proj1,
+                end = proj2,
+                strokeWidth = glowWidth,
+                cap = StrokeCap.Round
+            )
+            // Core
+            drawLine(
+                color = color.copy(alpha = alpha),
+                start = proj1,
+                end = proj2,
+                strokeWidth = strokeWidth,
                 cap = StrokeCap.Round
             )
         }
         
-        // === SPINE ===
-        val spineColor = LcarsBlue.copy(alpha = 0.4f)
-        for (i in 0..12) {
-            val vy = neckBottom + i * h * 0.028f
-            // Vertebra
-            drawRoundRect(
-                color = spineColor,
-                topLeft = Offset(cx - w * 0.025f, vy),
-                size = Size(w * 0.05f, h * 0.018f),
-                cornerRadius = CornerRadius(4f)
-            )
+        // Draw path with glow
+        fun draw3DPath(points: List<Point3D>, color: Color, strokeWidth: Float, closed: Boolean = false) {
+            if (points.size < 2) return
+            val rotated = points.map { it.rotateY(rotationAngle) }
+            val projected = rotated.map { it.project(cx, cy, scale) }
+            val avgDepth = rotated.map { it.depth() }.average().toFloat()
+            val alpha = (baseAlpha - avgDepth * 0.5f).coerceIn(0.2f, 1f)
+            
+            val path = Path().apply {
+                moveTo(projected[0].x, projected[0].y)
+                for (i in 1 until projected.size) {
+                    lineTo(projected[i].x, projected[i].y)
+                }
+                if (closed) close()
+            }
+            
+            // Glow
+            drawPath(path, color.copy(alpha = alpha * 0.2f), style = Stroke(strokeWidth * 4f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+            drawPath(path, color.copy(alpha = alpha * 0.5f), style = Stroke(strokeWidth * 2f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+            // Core
+            drawPath(path, color.copy(alpha = alpha), style = Stroke(strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round))
         }
         
-        // === ARMS ===
-        val armStartY = shoulderY + h * 0.01f
-        val elbowY = h * 0.38f
-        val wristY = h * 0.52f
-        val armWidth = w * 0.045f
+        // === SKELETON ===
         
-        // Left arm
-        val leftArmPath = Path().apply {
-            moveTo(cx - shoulderWidth + w * 0.01f, armStartY)
-            // Upper arm
-            quadraticBezierTo(
-                cx - shoulderWidth - w * 0.08f, armStartY + h * 0.10f,
-                cx - shoulderWidth - w * 0.10f, elbowY
-            )
-            // Forearm
-            quadraticBezierTo(
-                cx - shoulderWidth - w * 0.12f, elbowY + h * 0.08f,
-                cx - shoulderWidth - w * 0.14f, wristY
-            )
-            // Hand
-            lineTo(cx - shoulderWidth - w * 0.16f, wristY + h * 0.04f)
-            // Return path (inner arm)
-            lineTo(cx - shoulderWidth - w * 0.12f, wristY)
-            quadraticBezierTo(
-                cx - shoulderWidth - w * 0.08f, elbowY + h * 0.06f,
-                cx - shoulderWidth - w * 0.06f, elbowY
-            )
-            quadraticBezierTo(
-                cx - shoulderWidth - w * 0.04f, armStartY + h * 0.08f,
-                cx - shoulderWidth + w * 0.03f, armStartY + h * 0.02f
-            )
+        // Skull
+        draw3DPath(BodySkeleton.skull(rotationAngle), skeletonColor, 1.5f, closed = true)
+        
+        // Spine
+        for (i in 0 until BodySkeleton.spine.size - 1) {
+            draw3DLine(BodySkeleton.spine[i], BodySkeleton.spine[i + 1], skeletonColor, 2f)
         }
-        drawPath(leftArmPath, skinShadow)
-        drawPath(leftArmPath, skinTone, style = Stroke(2f))
-        
-        // Right arm (mirrored)
-        val rightArmPath = Path().apply {
-            moveTo(cx + shoulderWidth - w * 0.01f, armStartY)
-            quadraticBezierTo(
-                cx + shoulderWidth + w * 0.08f, armStartY + h * 0.10f,
-                cx + shoulderWidth + w * 0.10f, elbowY
-            )
-            quadraticBezierTo(
-                cx + shoulderWidth + w * 0.12f, elbowY + h * 0.08f,
-                cx + shoulderWidth + w * 0.14f, wristY
-            )
-            lineTo(cx + shoulderWidth + w * 0.16f, wristY + h * 0.04f)
-            lineTo(cx + shoulderWidth + w * 0.12f, wristY)
-            quadraticBezierTo(
-                cx + shoulderWidth + w * 0.08f, elbowY + h * 0.06f,
-                cx + shoulderWidth + w * 0.06f, elbowY
-            )
-            quadraticBezierTo(
-                cx + shoulderWidth + w * 0.04f, armStartY + h * 0.08f,
-                cx + shoulderWidth - w * 0.03f, armStartY + h * 0.02f
-            )
+        // Vertebrae markers
+        for (vertebra in BodySkeleton.spine) {
+            val rv = vertebra.rotateY(rotationAngle)
+            val pv = rv.project(cx, cy, scale)
+            val depth = rv.depth()
+            val alpha = (baseAlpha - depth * 0.5f).coerceIn(0.2f, 1f)
+            drawCircle(skeletonColor.copy(alpha = alpha * 0.6f), 4f, pv)
+            drawCircle(skeletonColor.copy(alpha = alpha), 2f, pv)
         }
-        drawPath(rightArmPath, skinShadow)
-        drawPath(rightArmPath, skinTone, style = Stroke(2f))
         
-        // === LEGS ===
-        val legTop = hipY + h * 0.01f
-        val kneeY = h * 0.72f
-        val ankleY = h * 0.92f
-        val legSep = w * 0.08f
-        val thighWidth = w * 0.08f
-        val calfWidth = w * 0.05f
+        // Ribs
+        for (rib in BodySkeleton.ribs()) {
+            draw3DPath(rib, skeletonColor.copy(alpha = 0.7f), 1.2f)
+        }
         
-        // Left leg
-        val leftLegPath = Path().apply {
-            moveTo(cx - legSep - thighWidth, legTop)
-            // Outer thigh
-            quadraticBezierTo(cx - legSep - thighWidth - w * 0.01f, kneeY - h * 0.05f, cx - legSep - calfWidth, kneeY)
-            // Outer calf
-            quadraticBezierTo(cx - legSep - calfWidth - w * 0.01f, ankleY - h * 0.05f, cx - legSep - calfWidth * 0.8f, ankleY)
+        // Pelvis
+        draw3DPath(BodySkeleton.pelvis(), skeletonColor, 1.5f)
+        // Mirror pelvis
+        val pelvisMirror = BodySkeleton.pelvis().map { Point3D(-it.x, it.y, it.z) }
+        draw3DPath(pelvisMirror, skeletonColor, 1.5f)
+        
+        // Arms
+        for ((p1, p2) in BodySkeleton.leftArm()) {
+            draw3DLine(p1, p2, skeletonColor, 1.8f)
+        }
+        for ((p1, p2) in BodySkeleton.rightArm()) {
+            draw3DLine(p1, p2, skeletonColor, 1.8f)
+        }
+        
+        // Legs
+        for ((p1, p2) in BodySkeleton.leftLeg()) {
+            draw3DLine(p1, p2, skeletonColor, 2f)
+        }
+        for ((p1, p2) in BodySkeleton.rightLeg()) {
+            draw3DLine(p1, p2, skeletonColor, 2f)
+        }
+        
+        // === ORGANS ===
+        
+        // Lungs (breathing animation)
+        draw3DPath(BodySkeleton.leftLung(breathExpand), lungColor, 1.5f, closed = true)
+        draw3DPath(BodySkeleton.rightLung(breathExpand), lungColor, 1.5f, closed = true)
+        
+        // Heart (pulsing)
+        val heartPoints = BodySkeleton.heart(heartScale)
+        draw3DPath(heartPoints, heartColor, 2f, closed = true)
+        // Heart inner glow
+        val heartCenter = heartPoints.map { it.rotateY(rotationAngle) }
+            .map { it.project(cx, cy, scale) }
+            .let { pts ->
+                Offset(pts.map { it.x }.average().toFloat(), pts.map { it.y }.average().toFloat())
+            }
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(heartColor.copy(alpha = 0.5f * heartScale), Color.Transparent),
+                center = heartCenter,
+                radius = 25f * heartScale
+            ),
+            radius = 25f * heartScale,
+            center = heartCenter
+        )
+        
+        // Major arteries (with blood flow effect)
+        for (artery in BodySkeleton.arteries()) {
+            draw3DPath(artery, arteryColor.copy(alpha = 0.6f), 1.2f)
+        }
+        
+        // === BODY OUTLINE (semi-transparent silhouette) ===
+        val bodyOutline = listOf(
+            // Head top
+            Point3D(0f, -0.60f, 0f),
+            Point3D(-0.08f, -0.56f, 0.04f),
+            Point3D(-0.10f, -0.48f, 0.06f),
+            Point3D(-0.08f, -0.42f, 0.05f),
+            // Neck
+            Point3D(-0.05f, -0.38f, 0.03f),
+            Point3D(-0.05f, -0.32f, 0.03f),
+            // Shoulder
+            Point3D(-0.20f, -0.30f, 0.06f),
+            Point3D(-0.22f, -0.28f, 0.05f),
+            // Arm
+            Point3D(-0.24f, -0.10f, 0.04f),
+            Point3D(-0.26f, 0.10f, 0.05f),
+            Point3D(-0.28f, 0.16f, 0.04f),
+            // Back up arm
+            Point3D(-0.24f, 0.10f, 0.03f),
+            Point3D(-0.22f, -0.08f, 0.02f),
+            // Side torso
+            Point3D(-0.18f, -0.10f, 0.08f),
+            Point3D(-0.16f, 0.10f, 0.10f),
+            Point3D(-0.14f, 0.28f, 0.08f),
+            // Hip
+            Point3D(-0.16f, 0.36f, 0.06f),
+            // Leg outer
+            Point3D(-0.14f, 0.60f, 0.05f),
+            Point3D(-0.12f, 0.88f, 0.05f),
+            Point3D(-0.14f, 0.94f, 0.04f),
             // Foot
-            lineTo(cx - legSep - calfWidth * 1.5f, ankleY + h * 0.03f)
-            lineTo(cx - legSep + calfWidth * 0.3f, ankleY + h * 0.03f)
-            lineTo(cx - legSep + calfWidth * 0.5f, ankleY)
-            // Inner calf
-            quadraticBezierTo(cx - legSep + calfWidth * 0.3f, ankleY - h * 0.05f, cx - legSep + calfWidth * 0.5f, kneeY)
-            // Inner thigh
-            quadraticBezierTo(cx - legSep + thighWidth * 0.3f, kneeY - h * 0.05f, cx - legSep + thighWidth * 0.5f, legTop)
-            close()
-        }
-        drawPath(leftLegPath, skinShadow)
-        drawPath(leftLegPath, skinTone, style = Stroke(2f))
+            Point3D(-0.06f, 0.96f, 0.06f),
+            // Inner leg
+            Point3D(-0.06f, 0.94f, 0.04f),
+            Point3D(-0.06f, 0.60f, 0.03f),
+            Point3D(-0.04f, 0.40f, 0.02f),
+        )
         
-        // Right leg
-        val rightLegPath = Path().apply {
-            moveTo(cx + legSep + thighWidth, legTop)
-            quadraticBezierTo(cx + legSep + thighWidth + w * 0.01f, kneeY - h * 0.05f, cx + legSep + calfWidth, kneeY)
-            quadraticBezierTo(cx + legSep + calfWidth + w * 0.01f, ankleY - h * 0.05f, cx + legSep + calfWidth * 0.8f, ankleY)
-            lineTo(cx + legSep + calfWidth * 1.5f, ankleY + h * 0.03f)
-            lineTo(cx + legSep - calfWidth * 0.3f, ankleY + h * 0.03f)
-            lineTo(cx + legSep - calfWidth * 0.5f, ankleY)
-            quadraticBezierTo(cx + legSep - calfWidth * 0.3f, ankleY - h * 0.05f, cx + legSep - calfWidth * 0.5f, kneeY)
-            quadraticBezierTo(cx + legSep - thighWidth * 0.3f, kneeY - h * 0.05f, cx + legSep - thighWidth * 0.5f, legTop)
-            close()
-        }
-        drawPath(rightLegPath, skinShadow)
-        drawPath(rightLegPath, skinTone, style = Stroke(2f))
+        // Draw left side outline
+        draw3DPath(bodyOutline, skeletonColor.copy(alpha = 0.15f), 0.8f)
+        // Draw right side (mirrored)
+        val rightOutline = bodyOutline.map { Point3D(-it.x, it.y, it.z) }
+        draw3DPath(rightOutline, skeletonColor.copy(alpha = 0.15f), 0.8f)
         
-        // Femur bones (visible through scan)
-        if (scanProgress > 0.55f && scanProgress < 0.95f) {
-            val boneColor = LcarsBlue.copy(alpha = 0.3f)
-            // Left femur
-            drawLine(boneColor, Offset(cx - legSep, legTop + h * 0.02f), Offset(cx - legSep - w * 0.01f, kneeY - h * 0.02f), 4f, StrokeCap.Round)
-            // Left tibia/fibula
-            drawLine(boneColor, Offset(cx - legSep - w * 0.01f, kneeY + h * 0.01f), Offset(cx - legSep, ankleY - h * 0.02f), 3f, StrokeCap.Round)
-            // Right femur
-            drawLine(boneColor, Offset(cx + legSep, legTop + h * 0.02f), Offset(cx + legSep + w * 0.01f, kneeY - h * 0.02f), 4f, StrokeCap.Round)
-            // Right tibia/fibula
-            drawLine(boneColor, Offset(cx + legSep + w * 0.01f, kneeY + h * 0.01f), Offset(cx + legSep, ankleY - h * 0.02f), 3f, StrokeCap.Round)
+        // Center line connecting
+        draw3DLine(bodyOutline.last(), rightOutline.last(), skeletonColor.copy(alpha = 0.1f), 0.5f)
+        draw3DLine(bodyOutline[0], rightOutline[0], skeletonColor.copy(alpha = 0.1f), 0.5f)
+        
+        // Temperature indicator glow on body
+        if (temperature > 37.5f) {
+            val feverColor = if (temperature > 38.5f) Color(0xFFFF4444) else Color(0xFFFFAA44)
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(feverColor.copy(alpha = 0.3f), Color.Transparent),
+                    center = Offset(cx, cy - scale * 0.15f),
+                    radius = scale * 0.35f
+                ),
+                radius = scale * 0.35f,
+                center = Offset(cx, cy - scale * 0.15f)
+            )
+        }
+        
+        // Stress indicator (brain glow)
+        if (stressLevel > 0.5f) {
+            val stressColor = if (stressLevel > 0.7f) Color(0xFFFF6644) else Color(0xFFFFCC44)
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(stressColor.copy(alpha = stressLevel * 0.4f), Color.Transparent),
+                    center = Offset(cx, cy - scale * 0.52f),
+                    radius = scale * 0.12f
+                ),
+                radius = scale * 0.12f,
+                center = Offset(cx, cy - scale * 0.52f)
+            )
         }
     }
 }

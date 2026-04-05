@@ -191,4 +191,134 @@ class AiAnalysisViewModel(application: Application) : AndroidViewModel(applicati
             else -> "MONITORING... All readings nominal."
         }
     }
+
+    
+    /**
+     * Process user natural language query about sensor data.
+     * Uses rule-based responses for now; can be extended with LLM integration.
+     */
+    fun processUserQuery(query: String) {
+        val now = System.currentTimeMillis()
+        val lowerQuery = query.lowercase()
+        
+        val response = when {
+            lowerQuery.contains("radiation") || lowerQuery.contains("rad") -> {
+                val cpm = radCpm?.invoke() ?: 0f
+                AiInsight(
+                    title = "Radiation Query Response",
+                    body = "Current radiation level: ${cpm.toInt()} CPM. " +
+                        if (cpm < 20) "This is normal background radiation." 
+                        else if (cpm < 50) "Slightly elevated. Monitor the situation."
+                        else "Elevated levels detected. Consider moving to a different area.",
+                    severity = "info",
+                    timestamp = now,
+                    sensorSource = "AI"
+                )
+            }
+            lowerQuery.contains("heart") || lowerQuery.contains("bio") || lowerQuery.contains("health") -> {
+                val hr = bioHeartRate?.invoke() ?: 0
+                AiInsight(
+                    title = "Biometric Query Response",
+                    body = "Current heart rate: $hr BPM. " +
+                        if (hr < 60) "Below normal resting rate."
+                        else if (hr < 100) "Normal resting heart rate."
+                        else "Elevated heart rate. Consider resting.",
+                    severity = "info",
+                    timestamp = now,
+                    sensorSource = "AI"
+                )
+            }
+            lowerQuery.contains("sound") || lowerQuery.contains("noise") || lowerQuery.contains("aco") -> {
+                val db = acoDecibels?.invoke() ?: 0f
+                val band = acoFreqBand?.invoke() ?: "unknown"
+                AiInsight(
+                    title = "Acoustic Query Response",
+                    body = "Current sound level: ${db.toInt()} dB in $band frequency range. " +
+                        if (db < 50) "Quiet environment."
+                        else if (db < 70) "Normal conversation level."
+                        else if (db < 85) "Loud environment."
+                        else "Potentially harmful noise levels. Consider ear protection.",
+                    severity = "info",
+                    timestamp = now,
+                    sensorSource = "AI"
+                )
+            }
+            lowerQuery.contains("weather") || lowerQuery.contains("pressure") || lowerQuery.contains("env") -> {
+                val pressure = envPressure?.invoke()
+                AiInsight(
+                    title = "Environmental Query Response",
+                    body = if (pressure != null) 
+                        "Current barometric pressure: ${String.format("%.1f", pressure)} hPa. " +
+                        if (pressure > 1020) "High pressure - expect clear weather."
+                        else if (pressure > 1000) "Normal pressure."
+                        else "Low pressure - possible storm approaching."
+                    else "Pressure sensor not available.",
+                    severity = "info",
+                    timestamp = now,
+                    sensorSource = "AI"
+                )
+            }
+            lowerQuery.contains("location") || lowerQuery.contains("gps") || lowerQuery.contains("heading") -> {
+                val heading = geoHeading?.invoke()
+                val direction = when {
+                    heading == null -> "unknown"
+                    heading < 22.5 || heading >= 337.5 -> "North"
+                    heading < 67.5 -> "Northeast"
+                    heading < 112.5 -> "East"
+                    heading < 157.5 -> "Southeast"
+                    heading < 202.5 -> "South"
+                    heading < 247.5 -> "Southwest"
+                    heading < 292.5 -> "West"
+                    else -> "Northwest"
+                }
+                AiInsight(
+                    title = "Geophysical Query Response",
+                    body = "Current heading: ${heading?.toInt() ?: 0}° ($direction). " +
+                        "Compass is calibrated and functioning.",
+                    severity = "info",
+                    timestamp = now,
+                    sensorSource = "AI"
+                )
+            }
+            lowerQuery.contains("leak") || lowerQuery.contains("pipe") || lowerQuery.contains("water") -> {
+                val score = pipeLeakScore?.invoke() ?: 0f
+                AiInsight(
+                    title = "Pipe Leak Query Response",
+                    body = "Leak probability: ${(score * 100).toInt()}%. " +
+                        if (score < 0.2) "No leak indicators detected."
+                        else if (score < 0.5) "Minor acoustic anomaly. Monitor area."
+                        else "Possible leak detected. Investigate further.",
+                    severity = if (score > 0.5) "warning" else "info",
+                    timestamp = now,
+                    sensorSource = "AI"
+                )
+            }
+            lowerQuery.contains("status") || lowerQuery.contains("summary") || lowerQuery.contains("all") -> {
+                AiInsight(
+                    title = "System Status Summary",
+                    body = "RAD: ${radCpm?.invoke()?.toInt() ?: 0} CPM | " +
+                        "ACO: ${acoDecibels?.invoke()?.toInt() ?: 0} dB | " +
+                        "BIO: ${bioHeartRate?.invoke() ?: 0} BPM | " +
+                        "LEAK: ${((pipeLeakScore?.invoke() ?: 0f) * 100).toInt()}%",
+                    severity = "info",
+                    timestamp = now,
+                    sensorSource = "AI"
+                )
+            }
+            else -> {
+                AiInsight(
+                    title = "Query Received",
+                    body = "I can answer questions about: radiation, heart rate/biometrics, " +
+                        "sound levels, weather/pressure, GPS/heading, pipe leaks, or system status. " +
+                        "Try asking about one of these topics.",
+                    severity = "info",
+                    timestamp = now,
+                    sensorSource = "AI"
+                )
+            }
+        }
+        
+        _insights.value = listOf(response) + _insights.value.take(9)
+        updateSummary()
+    }
 }

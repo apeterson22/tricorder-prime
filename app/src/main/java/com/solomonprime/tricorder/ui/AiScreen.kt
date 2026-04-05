@@ -7,6 +7,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Button
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,6 +82,58 @@ fun AiScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
+        // --- User Query Input ---
+        var userQuery by remember { mutableStateOf("") }
+        var isQuerying by remember { mutableStateOf(false) }
+        
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = userQuery,
+                onValueChange = { userQuery = it },
+                modifier = Modifier.weight(1f),
+                placeholder = { 
+                    Text("Ask about sensor data...", color = LcarsTan.copy(0.5f)) 
+                },
+                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = LcarsTan,
+                    unfocusedTextColor = LcarsTan,
+                    focusedBorderColor = LcarsBlue,
+                    unfocusedBorderColor = LcarsTan.copy(0.3f),
+                    cursorColor = LcarsOrange
+                ),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(
+                    onSend = {
+                        if (userQuery.isNotBlank()) {
+                            aiViewModel.processUserQuery(userQuery)
+                            userQuery = ""
+                        }
+                    }
+                )
+            )
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(LcarsBlue)
+                    .clickable {
+                        if (userQuery.isNotBlank()) {
+                            aiViewModel.processUserQuery(userQuery)
+                            userQuery = ""
+                        }
+                    }
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            ) {
+                Text("ASK", color = LcarsBlack, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(8.dp))
+        
         // --- Scrolling Ticker Summary ---
         TickerSummary(text = summary)
 

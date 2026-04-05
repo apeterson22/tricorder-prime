@@ -414,6 +414,31 @@ private fun WifiNetworkRow(
             )
         }
 
+        // Action buttons when selected
+        if (isSelected) {
+            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                NetworkActionButton(
+                    text = "CONNECT",
+                    color = LcarsBlue,
+                    onClick = { /* TODO: Connect to network */ }
+                )
+                NetworkActionButton(
+                    text = "DETAILS",
+                    color = LcarsTan,
+                    onClick = { /* TODO: Show details dialog */ }
+                )
+                NetworkActionButton(
+                    text = "SHARE",
+                    color = LcarsPurple,
+                    onClick = { /* TODO: Generate QR code */ }
+                )
+            }
+        }
+        
         // Expanded analysis
         if (isSelected && analysis != null) {
             Spacer(Modifier.height(6.dp))
@@ -525,6 +550,30 @@ private fun NfcDetailRow(label: String, value: String) {
             modifier = Modifier.weight(1f, fill = false).padding(start = 12.dp),
             maxLines = 3,
             overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+
+@Composable
+private fun NetworkActionButton(
+    text: String,
+    color: Color,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(color.copy(alpha = 0.2f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Text(
+            text = text,
+            color = color,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
         )
     }
 }

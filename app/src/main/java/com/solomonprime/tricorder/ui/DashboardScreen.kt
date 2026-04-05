@@ -19,6 +19,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.solomonprime.tricorder.data.ConnectedDeviceManager
+import android.content.Context
+import android.net.wifi.WifiManager
+import android.bluetooth.BluetoothManager
+import android.os.Build
+import androidx.compose.ui.platform.LocalContext
 import com.solomonprime.tricorder.ui.theme.*
 
 @Composable
@@ -62,7 +67,12 @@ fun DashboardScreen(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
+        
+        // WiFi & Bluetooth Status
+        ConnectivityStatusRow()
+        
+        Spacer(Modifier.height(12.dp))
 
         // Central radar sweep
         LcarsRadarSweep(
@@ -134,6 +144,105 @@ private fun LcarsDashCard(label: String, value: Float) {
                 letterSpacing = 2.sp
             )
             LcarsAnimatedValue(value = value, color = color, decimalPlaces = 1)
+        }
+    }
+}
+
+
+@Composable
+private fun ConnectivityStatusRow() {
+    val context = LocalContext.current
+    
+    // Get WiFi info
+    val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+    val wifiInfo = wifiManager?.connectionInfo
+    val ssid = wifiInfo?.ssid?.removePrefix("\"")?.removeSuffix("\"") ?: "Not Connected"
+    val rssi = wifiInfo?.rssi ?: -100
+    val wifiStrength = WifiManager.calculateSignalLevel(rssi, 5)
+    
+    // Get Bluetooth info
+    val btManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+    val btAdapter = btManager?.adapter
+    val btEnabled = btAdapter?.isEnabled == true
+    val btDeviceCount = try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // Need BLUETOOTH_CONNECT permission on Android 12+
+            0 // Will show 0 if permission not granted
+        } else {
+            @Suppress("DEPRECATION")
+            btAdapter?.bondedDevices?.size ?: 0
+        }
+    } catch (e: SecurityException) { 0 }
+    
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(LcarsDarkPanel)
+            .padding(12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        // WiFi
+        Column {
+            Text(
+                "WIFI",
+                color = LcarsBlue.copy(0.6f),
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                letterSpacing = 1.sp
+            )
+            Text(
+                text = if (ssid == "<unknown ssid>") "Connected" else ssid.take(15),
+                color = LcarsBlue,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                repeat(5) { i ->
+                    Box(
+                        modifier = Modifier
+                            .padding(end = 2.dp)
+                            .width(4.dp)
+                            .height((6 + i * 3).dp)
+                            .background(
+                                if (i < wifiStrength) LcarsBlue 
+                                else LcarsBlue.copy(0.2f)
+                            )
+                    )
+                }
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    "${rssi} dBm",
+                    color = LcarsTan.copy(0.6f),
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+        }
+        
+        // Bluetooth
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                "BLUETOOTH",
+                color = LcarsTan.copy(0.6f),
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                letterSpacing = 1.sp
+            )
+            Text(
+                text = if (btEnabled) "ENABLED" else "DISABLED",
+                color = if (btEnabled) LcarsTan else LcarsRed,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace
+            )
+            Text(
+                text = "$btDeviceCount paired",
+                color = LcarsTan.copy(0.6f),
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace
+            )
         }
     }
 }
